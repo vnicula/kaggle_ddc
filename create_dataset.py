@@ -14,8 +14,8 @@ import time
 
 META_DATA = "metadata.json"
 MARGIN = 16
-TRAIN_FACE_SIZE = 192
-TRAIN_FRAME_COUNT = 16
+TRAIN_FACE_SIZE = 224
+TRAIN_FRAME_COUNT = 32
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
@@ -152,7 +152,7 @@ def extract_one_sample_bbox(video_path, max_detection_size, max_frame_count, fac
 def run(input_dir, slice_size, already_processed, first_slice):
 
     f_list = os.listdir(input_dir)
-    slice_prefix = os.path.basename(input_dir)
+    slice_prefix = os.path.basename(input_dir).split('_')[-1]
     dataset_slice = {}
     slices = first_slice
     with open(os.path.join(input_dir, META_DATA)) as json_file:
@@ -176,7 +176,7 @@ def run(input_dir, slice_size, already_processed, first_slice):
             # faces = extract_one_sample(f_path, img_scale=0.5, skip_n=4)
             faces = extract_one_sample_bbox(f_path, max_detection_size=960, 
                 max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
-            label = label_data[file_name]['label']
+            label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
             if len(faces) > 0:
                 dataset_slice[file_name] = (label, faces)
             print('name: {}, faces {}, label {}'.format(file_name, len(faces), label))
