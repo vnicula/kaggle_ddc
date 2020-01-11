@@ -15,7 +15,7 @@ from tensorflow.keras.layers import Dense, Input, GRU, Reshape, TimeDistributed
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
-tf.enable_eager_execution()
+# tf.enable_eager_execution()
 
 
 def rescale_list(input_list, size):
@@ -46,33 +46,40 @@ def read_file(file_path):
             data = pickle.load(f_p)
             for key in data.keys():
                 names.append(key)
-                # labels.append(data[key][0])
-                labels.append(int(data[key][0] == 'FAKE'))
-                sample = np.array(data[key][1][:8])
-                sample = preprocess_input(sample)
+                labels.append(data[key][0])
+                # labels.append(int(data[key][0] == 'FAKE'))
                 # sample = data[key][1][0]
+                sample = np.array(data[key][1][:8])
+                sample = preprocess_input(sample.astype(np.float32))
                 samples.append(sample)
 
     # Not sure why can't I do this here instead of py func
     # dataset = tf.data.Dataset.from_tensor_slices((names, labels, samples))
-    return np.array(samples, dtype=np.int16), np.array(labels, dtype=np.int16)
+    npsamples = np.array(samples, dtype=np.float32)
+    nplabels = np.array(labels, dtype=np.float32)
+    print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
+    return npsamples, nplabels
 
 def input_dataset(input_dir):
+    # dataset = tf.data.Dataset.list_files(input_dir)
     f_list = os.listdir(input_dir)
     dataset_files = [os.path.join(input_dir, fn) for fn in f_list if fn.endswith('pkl')]
     dataset = tf.data.Dataset.from_tensor_slices((dataset_files))
+    
     dataset = dataset.flat_map(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
-            tuple(tf.py_func(read_file, [file_name], [tf.int16, tf.int16]))
+            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32]))
         )
     )
+    dataset = dataset.map(lambda s, l: (tf.reshape(s, [8, 224, 224, 3]), tf.reshape(l, [-1])))
     return dataset
 
 def create_model(input_shape, weights):
 
     input_layer = Input(shape=input_shape)
     # reshape = Reshape([224, 224, 3])(input_layer)
-    mobilenet = MobileNetV2(include_top=False, weights=weights, pooling='avg')
+    mobilenet = MobileNetV2(include_top=False, weights=weights,
+        input_shape=input_shape[-3:], pooling='avg')
     for layer in mobilenet.layers:
         layer.trainable = False
     # net = mobilenet(input_layer)
@@ -119,6 +126,7 @@ if __name__ == '__main__':
     #     print(npelem[0].shape)
 
     in_shape = (8, 224, 224, 3)
+
     # in_shape = (224, 224, 3)
     model = create_model(in_shape,
         'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')

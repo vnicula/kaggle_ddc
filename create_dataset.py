@@ -14,6 +14,7 @@ import time
 
 META_DATA = "metadata.json"
 MARGIN = 16
+MAX_DETECTION_SIZE = 960
 TRAIN_FACE_SIZE = 224
 TRAIN_FRAME_COUNT = 32
 
@@ -174,7 +175,7 @@ def run(input_dir, slice_size, already_processed, first_slice):
         if suffix.lower() in ['mp4', 'avi', 'mov']:
             # Parse video
             # faces = extract_one_sample(f_path, img_scale=0.5, skip_n=4)
-            faces = extract_one_sample_bbox(f_path, max_detection_size=960, 
+            faces = extract_one_sample_bbox(f_path, max_detection_size=MAX_DETECTION_SIZE, 
                 max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
             label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
             if len(faces) > 0:
@@ -222,7 +223,7 @@ if __name__ == '__main__':
     #     # 'test_videos/atxvxouljq.mp4',
     #     # 'H:/Downloads/dfdc_train_part_15/ajquhoecmv.mp4',
     #    'H:/Downloads/dfdc_train_part_15\gobvnzkjaf.mp4',
-    #     max_detection_size=960, max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
+    #     max_detection_size=MAX_DETECTION_SIZE, max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
     # print('Faces detected: {}'.format(len(faces)))
     # for i in range(min(20, len(faces))):
     #     plt.imshow(faces[i])
