@@ -74,7 +74,7 @@ def detect_facenet_pytorch(detector, images, batch_size):
     return faces
 
 
-def detect_faces_bbox(detector, originals, images, batch_size, img_scale, face_size):
+def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale, face_size):
     faces = []
     face_locations = []
     for lb in np.arange(0, len(images), batch_size):
@@ -82,8 +82,8 @@ def detect_faces_bbox(detector, originals, images, batch_size, img_scale, face_s
         frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
         # Hope for no artifacts in 1st frame
         # print(frames_boxes)
-        skip_batch = True
-        if (frames_boxes is not None) and (len(frames_boxes) > 0):
+        skip_batch = False
+        if (label == 1) and (frames_boxes is not None) and (len(frames_boxes) > 0):
             # Find first frame with faces:
             for i in range(len(frames_boxes)):
                 if (frames_boxes[i] is not None):
@@ -138,13 +138,13 @@ def extract_one_sample_faces(video_path, max_detection_size, max_frame_count, fa
     print('parsing: %.3f scale %f, detection: %.3f seconds' %(parsing, img_scale, detection))
     return faces
 
-def extract_one_sample_bbox(video_path, max_detection_size, max_frame_count, face_size):
+def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_count, face_size):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
     imgs, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count)
     parsing = time.time() - start
     # faces = detect_facenet_pytorch(detector, imgs, 256)
-    faces = detect_faces_bbox(detector, imgs, imrs, 256, img_scale, face_size)
+    faces = detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size)
     # print('faces: ', faces)
     detection = time.time() - start - parsing
     print('parsing: %.3f scale %f, detection: %.3f seconds' %(parsing, img_scale, detection))
@@ -175,9 +175,9 @@ def run(input_dir, slice_size, already_processed, first_slice):
         if suffix.lower() in ['mp4', 'avi', 'mov']:
             # Parse video
             # faces = extract_one_sample(f_path, img_scale=0.5, skip_n=4)
-            faces = extract_one_sample_bbox(f_path, max_detection_size=MAX_DETECTION_SIZE, 
-                max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
             label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
+            faces = extract_one_sample_bbox(f_path, label, max_detection_size=MAX_DETECTION_SIZE, 
+                max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
             if len(faces) > 0:
                 dataset_slice[file_name] = (label, faces)
             print('name: {}, faces {}, label {}'.format(file_name, len(faces), label))

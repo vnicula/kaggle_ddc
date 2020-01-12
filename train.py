@@ -17,6 +17,7 @@ from tensorflow.keras.layers import Dense, Input, GRU, Reshape, TimeDistributed
 # https://github.com/tensorflow/tensorflow/issues/24520
 # tf.enable_eager_execution()
 
+SEQ_LEN = 3
 
 def rescale_list(input_list, size):
     """Given a list and a size, return a rescaled/samples list. For example,
@@ -35,6 +36,8 @@ def rescale_list(input_list, size):
 
 
 # TODO investigate preprocessing of pixel values for pretrained MobileNet
+# TODO do padding with mask (and masking layer in the model)
+# TODO do sample weighting and oversample REAL
 def read_file(file_path):
     
     names = []
@@ -49,8 +52,9 @@ def read_file(file_path):
                 labels.append(data[key][0])
                 # labels.append(int(data[key][0] == 'FAKE'))
                 # sample = data[key][1][0]
-                sample = np.array(data[key][1][:8])
+                sample = np.array(data[key][1][:SEQ_LEN])
                 sample = preprocess_input(sample.astype(np.float32))
+                # print(sample.shape)
                 samples.append(sample)
 
     # Not sure why can't I do this here instead of py func
@@ -71,7 +75,7 @@ def input_dataset(input_dir):
             tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32]))
         )
     )
-    dataset = dataset.map(lambda s, l: (tf.reshape(s, [8, 224, 224, 3]), tf.reshape(l, [-1])))
+    dataset = dataset.map(lambda s, l: (tf.reshape(s, [-1, 224, 224, 3]), tf.reshape(l, [-1])))
     return dataset
 
 def create_model(input_shape, weights):
@@ -125,13 +129,13 @@ if __name__ == '__main__':
     #     print(npelem[0], npelem[1])
     #     print(npelem[0].shape)
 
-    in_shape = (8, 224, 224, 3)
+    in_shape = (SEQ_LEN, 224, 224, 3)
 
     # in_shape = (224, 224, 3)
     model = create_model(in_shape,
         'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
 
-    dataset = dataset.shuffle(buffer_size=256).batch(8)
+    dataset = dataset.shuffle(buffer_size=256).batch(16)
     num_epochs = 2
     history = model.fit(dataset, epochs=num_epochs)
     save_loss(history, num_epochs)
