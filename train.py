@@ -59,6 +59,7 @@ def read_file(file_path):
 
     # Not sure why can't I do this here instead of py func
     # dataset = tf.data.Dataset.from_tensor_slices((names, labels, samples))
+    # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
     nplabels = np.array(labels, dtype=np.float32)
     print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
