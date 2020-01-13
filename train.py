@@ -11,13 +11,14 @@ import time
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Dense, Input, GRU, Reshape, TimeDistributed
+from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
+from tensorflow.keras.layers import Input, GRU, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
 # tf.enable_eager_execution()
 
-SEQ_LEN = 3
+SEQ_LEN = 30
 
 def rescale_list(input_list, size):
     """Given a list and a size, return a rescaled/samples list. For example,
@@ -36,13 +37,13 @@ def rescale_list(input_list, size):
 
 
 # TODO investigate preprocessing of pixel values for pretrained MobileNet
-# TODO do padding with mask (and masking layer in the model)
-# TODO do sample weighting and oversample REAL
+# TODO oversample REAL
 def read_file(file_path):
     
     names = []
     labels = []
     samples = []
+    masks = []
     
     if os.path.exists(file_path):
         with open(file_path, 'rb') as f_p:
@@ -52,18 +53,31 @@ def read_file(file_path):
                 labels.append(data[key][0])
                 # labels.append(int(data[key][0] == 'FAKE'))
                 # sample = data[key][1][0]
-                sample = np.array(data[key][1][:SEQ_LEN])
-                sample = preprocess_input(sample.astype(np.float32))
+
+                img_size = data[key][1][0].shape[0]
+                my_seq_len = len(data[key][1])
+                data_seq_len = min(my_seq_len, SEQ_LEN)
+                sample = np.zeros((SEQ_LEN, img_size, img_size, 3), dtype=np.float32)
+                mask = np.ones(SEQ_LEN, dtype=np.float32)
+                for indx in range(data_seq_len):
+                    sample[indx] = np.array(data[key][1])[indx]
+                sample = preprocess_input(sample)
+                if my_seq_len < SEQ_LEN:
+                    sample[my_seq_len:] = np.zeros((SEQ_LEN-my_seq_len, img_size, img_size, 3), dtype=np.float32)
+                    mask[my_seq_len:] = np.zeros((SEQ_LEN-my_seq_len), dtype=np.float32)
                 # print(sample.shape)
                 samples.append(sample)
+                masks.append(mask)
 
     # Not sure why can't I do this here instead of py func
     # dataset = tf.data.Dataset.from_tensor_slices((names, labels, samples))
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
+    npmasks = np.array(masks, dtype=np.float32)
     nplabels = np.array(labels, dtype=np.float32)
+
     print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
-    return npsamples, nplabels
+    return npsamples, npmasks, nplabels
 
 def input_dataset(input_dir):
     # dataset = tf.data.Dataset.list_files(input_dir)
@@ -73,26 +87,43 @@ def input_dataset(input_dir):
     
     dataset = dataset.flat_map(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
-            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32]))
+            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.float32]))
         )
     )
-    dataset = dataset.map(lambda s, l: (tf.reshape(s, [-1, 224, 224, 3]), tf.reshape(l, [-1])))
+    def final_map(s, m, l):
+        return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1, 1])}, tf.reshape(l, [-1])
+    dataset = dataset.map(final_map)
     return dataset
 
 def create_model(input_shape, weights):
 
     input_layer = Input(shape=input_shape)
+    input_mask = Input(shape=(input_shape[0], 1))
     # reshape = Reshape([224, 224, 3])(input_layer)
     mobilenet = MobileNetV2(include_top=False, weights=weights,
-        input_shape=input_shape[-3:], pooling='avg')
+        input_shape=input_shape[-3:],
+        # pooling='avg'
+        pooling=None
+    )
     for layer in mobilenet.layers:
         layer.trainable = False
-    # net = mobilenet(input_layer)
-    net = TimeDistributed(mobilenet)(input_layer)
-    net = GRU(128, return_sequences=False)(net)
+    
+    features = Conv2D(128, (3, 3), strides=(2, 2), padding='valid', activation='relu')(mobilenet.output)
+    # features = MaxPooling2D(pool_size=(2, 2))(features)
+    features = GlobalMaxPooling2D()(features)
+    features = Flatten()(features)
+    features = Dropout(0.25)(features)
+
+    feature_extractor = Model(inputs=mobilenet.input, outputs=features)
+    print(feature_extractor.summary())
+    
+    cnn_output = TimeDistributed(feature_extractor)(input_layer)
+    net = multiply([cnn_output, input_mask])
+    net = Masking(mask_value = 0.0)(net)
+    net = GRU(256, return_sequences=False)(net)
     out = Dense(1, activation='sigmoid')(net)
 
-    model = Model(inputs=input_layer, outputs=out)
+    model = Model(inputs=[input_layer, input_mask], outputs=out)
     model.compile(loss='binary_crossentropy', optimizer='adam', 
         metrics=['accuracy', #tf.keras.metrics.TruePositives(), tf.keras.metrics.TrueNegatives(),
              tf.keras.metrics.FalsePositives(), tf.keras.metrics.FalseNegatives()])
@@ -136,9 +167,11 @@ if __name__ == '__main__':
     model = create_model(in_shape,
         'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
 
-    dataset = dataset.shuffle(buffer_size=256).batch(16)
+    dataset = dataset.shuffle(buffer_size=).batch(16).prefetch(8)
+
     num_epochs = 2
-    history = model.fit(dataset, epochs=num_epochs)
+    class_weight={0: 1., 1: 0.2}
+    history = model.fit(dataset, epochs=num_epochs, class_weight=class_weight)
     save_loss(history, num_epochs)
 
     t1 = time.time()
