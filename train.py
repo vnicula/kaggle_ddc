@@ -110,7 +110,7 @@ def read_file(file_path):
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
     npmasks = np.array(masks, dtype=np.float32)
-    nplabels = np.array(labels, dtype=np.int32)
+    nplabels = np.array(labels, dtype=np.float32)
 
     print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
     # return tf.data.Dataset.from_tensor_slices((npsamples, npmasks, nplabels))
@@ -149,11 +149,11 @@ def input_dataset(input_dir):
 
     dataset = dataset.apply(tf.data.experimental.parallel_interleave(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
-            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
+            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.float32]))),
         cycle_length=8,
         block_length=8,
         sloppy=True,
-        buffer_output_elements=8,
+        buffer_output_elements=4,
         )
     )
 
@@ -174,41 +174,94 @@ def input_dataset(input_dir):
 def fraction_positives(y_true, y_pred):
     return tf.keras.backend.mean(y_true)
 
+class WeightedBinaryCrossEntropy(keras.losses.Loss):
+    """
+    Args:
+      pos_weight: Scalar to affect the positive labels of the loss function.
+      weight: Scalar to affect the entirety of the loss function.
+      from_logits: Whether to compute loss form logits or the probability.
+      reduction: Type of tf.keras.losses.Reduction to apply to loss.
+      name: Name of the loss function.
+    """
+    def __init__(self, pos_weight, weight, from_logits=False,
+                 reduction=keras.losses.Reduction.AUTO,
+                 name='weighted_binary_crossentropy'):
+        super(WeightedBinaryCrossEntropy, self).__init__(reduction=reduction,
+                                                         name=name)
+        self.pos_weight = pos_weight
+        self.weight = weight
+        self.from_logits = from_logits
 
+    def call(self, y_true, y_pred):
+        if not self.from_logits:
+            # Manually calculate the weighted cross entropy.
+            # Formula is qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+            # where z are labels, x is logits, and q is the weight.
+            # Since the values passed are from sigmoid (assuming in this case)
+            # sigmoid(x) will be replaced by y_pred
+
+            # qz * -log(sigmoid(x)) 1e-6 is added as an epsilon to stop passing a zero into the log
+            x_1 = y_true * self.pos_weight * -tf.math.log(y_pred + 1e-6)
+
+            # (1 - z) * -log(1 - sigmoid(x)). Epsilon is added to prevent passing a zero into the log
+            x_2 = (1 - y_true) * -tf.math.log(1 - y_pred + 1e-6)
+
+            return tf.add(x_1, x_2) * self.weight 
+
+        # Use built in function
+        return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
+
+
+def weighted_ce_logits(y_true, y_pred):
+    return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.5, name='weighted_ce_logits')
+
+# TODO: use Bidirectional and try narrower MobileNet
+# TODO: explore removal of projection at the end of MobileNet to LSTM
+# TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
+# oh wait its already in TF doc
 def create_model(input_shape, weights):
 
     # with tf.device('/cpu:0'):
+    # strategy = tf.distribute.MirroredStrategy()
+    # print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+    # with strategy.scope():
+
     input_layer = Input(shape=input_shape)
     input_mask = Input(shape=(input_shape[0], 1))
     # reshape = Reshape([224, 224, 3])(input_layer)
     mobilenet = MobileNetV2(include_top=False, weights=weights,
         input_shape=input_shape[-3:],
-        pooling='avg'
+        pooling='max'
         # pooling=None
     )
 
-    # for layer in mobilenet.layers:
-    #     if ('block_16' not in layer.name): # and ('block_15' not in layer.name): # and ('block_14' not in layer.name):
-    #         layer.trainable = False
-    #     else:
-    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    for layer in mobilenet.layers:
+        if (('block_16' not in layer.name) and ('block_15' not in layer.name)
+            and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+            and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+            and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+        ):
+            layer.trainable = False
+        else:
+            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
-    # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(mobilenet.output)
+    features = mobilenet.output
+    # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
     # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
     # # features = MaxPooling2D(pool_size=(2, 2))(features)
     # features = GlobalMaxPooling2D()(features)
-    # features = Flatten()(features)
-    # # features = Dropout(0.25)(features)
+    features = Flatten()(features)
+    features = Dense(128, activation='elu')(features)
+    # features = Dropout(0.25)(features)
 
-    # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
+    feature_extractor = Model(inputs=mobilenet.input, outputs=features)
     # print(feature_extractor.summary())
     
-    # cnn_output = TimeDistributed(feature_extractor)(input_layer)
-    cnn_output = TimeDistributed(mobilenet)(input_layer)
+    cnn_output = TimeDistributed(feature_extractor)(input_layer)
     net = multiply([cnn_output, input_mask])
     net = Masking(mask_value = 0.0)(net)
-    net = GRU(256, return_sequences=False)(net)
-    net = Dense(512, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
+    net = GRU(128, return_sequences=False)(net)
+    net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     net = Dropout(0.25)(net)
     out = Dense(1, #activation='sigmoid', 
         bias_initializer=tf.keras.initializers.Constant(0.83))(net)
@@ -217,8 +270,8 @@ def create_model(input_shape, weights):
     
     # This saturates GPU:0 for large models
     # parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
-    parallel_model = multi_gpu_model(model, gpus=4)
-    print("Training using multiple GPUs..")
+    # parallel_model = multi_gpu_model(model, gpus=4)
+    # print("Training using multiple GPUs..")
 
     # def get_lr_metric(optimizer):
     #     def lr(y_true, y_pred):
@@ -238,22 +291,17 @@ def create_model(input_shape, weights):
         tf.keras.metrics.Precision(name='precision'),
         tf.keras.metrics.Recall(name='recall'),
         tf.keras.metrics.AUC(name='auc'),
-        'binary_crossentropy',
+        tf.keras.metrics.BinaryCrossentropy(from_logits=True),
         fraction_positives,
         # lr_metric,
     ]
-    my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
-    print(parallel_model.summary())
+    # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+    # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+    # print(parallel_model.summary())
+    model.compile(loss=weighted_ce_logits, optimizer=optimizer, metrics=METRICS)
+    print(model.summary())
 
-    return parallel_model
-
-    # model.compile(loss='binary_crossentropy', optimizer='adam', 
-    #     metrics=['accuracy', tf.keras.metrics.TruePositives(), tf.keras.metrics.TrueNegatives(),
-    #          tf.keras.metrics.FalsePositives(), tf.keras.metrics.FalseNegatives()])
-    # print(model.summary())
-
-    # return model
+    return model
 
 
 def save_loss(H):
@@ -271,7 +319,7 @@ def save_loss(H):
 
 
 def step_decay(epoch):
-    initial_lrate = 0.02 # 0.045
+    initial_lrate = 0.045
     drop = 0.9
     epochs_drop = 2.0
     lrate = initial_lrate * math.pow(drop, math.floor((1+epoch)/epochs_drop))
@@ -313,9 +361,9 @@ if __name__ == '__main__':
             'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
 
     train_dataset = train_dataset.shuffle(buffer_size=1024).batch(16).prefetch(2)
-    eval_dataset = eval_dataset.batch(4).prefetch(2)
+    eval_dataset = eval_dataset.take(512).cache().batch(4).prefetch(2)
     
-    num_epochs = 5
+    num_epochs = 100
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
@@ -337,10 +385,10 @@ if __name__ == '__main__':
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.045, eta_min=1e-4),
     ]
     
-    class_weight={0: 0.999, 1: 0.001}
-    # class_weight=[0.99, 0.01]
+    # class_weight={0: 0.999, 1: 0.001}
+    class_weight=[0.99, 0.01]
     history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
-        validation_data=eval_dataset, validation_steps=40, callbacks=callbacks)
+        validation_data=eval_dataset, validation_steps=128, callbacks=callbacks)
     save_loss(history)
 
     t1 = time.time()
