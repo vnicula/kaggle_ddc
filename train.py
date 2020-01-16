@@ -23,7 +23,7 @@ from tensorflow.keras.utils import multi_gpu_model
 # TODO there's an input warning that input doesnt come from input layer
 # TODO use parallel_interleave
 
-SEQ_LEN = 16
+SEQ_LEN = 30
 
 class CosineAnnealingScheduler(tf.keras.callbacks.Callback):
     """Cosine annealing scheduler.
@@ -102,6 +102,11 @@ def read_file(file_path):
             samples.append(sample)
             masks.append(mask)
 
+            if data[key][0] == 0:
+                samples.append(np.fliplr(sample))
+                masks.append(mask)
+                labels.append(0)
+
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
     npmasks = np.array(masks, dtype=np.float32)
@@ -130,7 +135,7 @@ def read_file(file_path):
 
 def input_dataset(input_dir):
     print('Using dataset from: ', input_dir)
-    dataset = tf.data.Dataset.list_files(input_dir).shuffle(512)
+    dataset = tf.data.Dataset.list_files(input_dir).shuffle(8192)
     
     # dataset = dataset.interleave(
     #     # map_func=lambda file_name: tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]),
@@ -165,6 +170,11 @@ def input_dataset(input_dir):
     dataset = dataset.map(final_map, num_parallel_calls=16)
     return dataset
 
+
+def fraction_positives(y_true, y_pred):
+    return tf.keras.backend.mean(y_true)
+
+
 def create_model(input_shape, weights):
 
     # with tf.device('/cpu:0'):
@@ -173,45 +183,67 @@ def create_model(input_shape, weights):
     # reshape = Reshape([224, 224, 3])(input_layer)
     mobilenet = MobileNetV2(include_top=False, weights=weights,
         input_shape=input_shape[-3:],
-        # pooling='avg'
-        pooling=None
+        pooling='avg'
+        # pooling=None
     )
 
-    for layer in mobilenet.layers:
-        if ('block_16' not in layer.name): # and ('block_15' not in layer.name): # and ('block_14' not in layer.name):
-            layer.trainable = False
-        else:
-            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    # for layer in mobilenet.layers:
+    #     if ('block_16' not in layer.name): # and ('block_15' not in layer.name): # and ('block_14' not in layer.name):
+    #         layer.trainable = False
+    #     else:
+    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
-    features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(mobilenet.output)
-    # features = MaxPooling2D(pool_size=(2, 2))(features)
-    features = GlobalMaxPooling2D()(features)
-    features = Flatten()(features)
-    features = Dropout(0.25)(features)
+    # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(mobilenet.output)
+    # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
+    # # features = MaxPooling2D(pool_size=(2, 2))(features)
+    # features = GlobalMaxPooling2D()(features)
+    # features = Flatten()(features)
+    # # features = Dropout(0.25)(features)
 
-    feature_extractor = Model(inputs=mobilenet.input, outputs=features)
-    print(feature_extractor.summary())
+    # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
+    # print(feature_extractor.summary())
     
-    cnn_output = TimeDistributed(feature_extractor)(input_layer)
+    # cnn_output = TimeDistributed(feature_extractor)(input_layer)
+    cnn_output = TimeDistributed(mobilenet)(input_layer)
     net = multiply([cnn_output, input_mask])
     net = Masking(mask_value = 0.0)(net)
     net = GRU(256, return_sequences=False)(net)
-    out = Dense(512, activation='relu')(net)
-    out = Dense(1, activation='sigmoid')(net)
+    net = Dense(512, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
+    net = Dropout(0.25)(net)
+    out = Dense(1, #activation='sigmoid', 
+        bias_initializer=tf.keras.initializers.Constant(0.83))(net)
 
     model = Model(inputs=[input_layer, input_mask], outputs=out)
     
     # This saturates GPU:0 for large models
-    parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
-    # parallel_model = multi_gpu_model(model, gpus=4)
+    # parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
+    parallel_model = multi_gpu_model(model, gpus=4)
     print("Training using multiple GPUs..")
 
-    def fraction_positives(y_true, y_pred):
-        return tf.keras.backend.mean(y_true)
+    # def get_lr_metric(optimizer):
+    #     def lr(y_true, y_pred):
+    #         return optimizer.lr
+    #     return lr
 
-    parallel_model.compile(loss='binary_crossentropy', optimizer='adam', 
-        metrics=['accuracy', tf.keras.metrics.TruePositives(), tf.keras.metrics.TrueNegatives(),
-             tf.keras.metrics.FalsePositives(), tf.keras.metrics.FalseNegatives(), fraction_positives])
+    optimizer = tf.keras.optimizers.Adam(lr=0.01)
+    # TODO keras needs custom_objects when loading models with custom metrics
+    # But this one needs the optimizer.
+    # lr_metric = get_lr_metric(optimizer)
+    METRICS = [
+        tf.keras.metrics.TruePositives(name='tp'),
+        tf.keras.metrics.FalsePositives(name='fp'),
+        tf.keras.metrics.TrueNegatives(name='tn'),
+        tf.keras.metrics.FalseNegatives(name='fn'), 
+        tf.keras.metrics.BinaryAccuracy(name='accuracy'),
+        tf.keras.metrics.Precision(name='precision'),
+        tf.keras.metrics.Recall(name='recall'),
+        tf.keras.metrics.AUC(name='auc'),
+        'binary_crossentropy',
+        fraction_positives,
+        # lr_metric,
+    ]
+    my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+    parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
     print(parallel_model.summary())
 
     return parallel_model
@@ -229,8 +261,8 @@ def save_loss(H):
     N = len(H.history["loss"])
     plt.plot(np.arange(0, N), H.history["loss"], label="train_loss")
     plt.plot(np.arange(0, N), H.history["val_loss"], label="val_loss")
-    plt.plot(np.arange(0, N), H.history["acc"], label="train_acc")
-    plt.plot(np.arange(0, N), H.history["val_acc"], label="val_acc")
+    plt.plot(np.arange(0, N), H.history["accuracy"], label="train_acc")
+    plt.plot(np.arange(0, N), H.history["val_accuracy"], label="val_acc")
     plt.title("Training Loss and Accuracy")
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
@@ -239,11 +271,12 @@ def save_loss(H):
 
 
 def step_decay(epoch):
-	initial_lrate = 0.045
-	drop = 0.9
-	epochs_drop = 2.0
-	lrate = initial_lrate * math.pow(drop, math.floor((1+epoch)/epochs_drop))
-	return lrate
+    initial_lrate = 0.02 # 0.045
+    drop = 0.9
+    epochs_drop = 2.0
+    lrate = initial_lrate * math.pow(drop, math.floor((1+epoch)/epochs_drop))
+    print('learning rate ', lrate)
+    return lrate
 
 
 if __name__ == '__main__':
@@ -253,6 +286,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--load', type=str, default=None)
     args = parser.parse_args()
 
     train_dataset = input_dataset(args.train_dir)
@@ -267,37 +301,46 @@ if __name__ == '__main__':
     in_shape = (SEQ_LEN, 224, 224, 3)
 
     # in_shape = (224, 224, 3)
-    model = create_model(in_shape,
-        'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
+    if args.load is not None:
+        print('Loading model and weights from: ', args.load)
+        custom_objs = {
+            'fraction_positives':fraction_positives,
+        }
+        model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+    else:
+        print('Training model from scratch.')
+        model = create_model(in_shape,
+            'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
 
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32).prefetch(2)
-    eval_dataset = eval_dataset.batch(8).prefetch(8)
+    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(16).prefetch(2)
+    eval_dataset = eval_dataset.batch(4).prefetch(2)
     
-    num_epochs = 10
+    num_epochs = 5
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath='mobgru_{epoch}.h5',
             save_best_only=True,
-            monitor='val_loss',
+            monitor='val_binary_crossentropy',
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             # Stop training when `val_loss` is no longer improving
-            monitor='val_loss',
+            # monitor='val_loss', # watch out for reg losses
+            monitor='val_binary_crossentropy',
             # "no longer improving" being defined as "no better than 1e-2 less"
             min_delta=1e-3,
             # "no longer improving" being further defined as "for at least 2 epochs"
             patience=3,
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
-        # tf.keras.callbacks.LearningRateScheduler(step_decay),
-        CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.045, eta_min=1e-4),
+        tf.keras.callbacks.LearningRateScheduler(step_decay),
+        # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.045, eta_min=1e-4),
     ]
     
-    # class_weight={0: 0.999, 1: 0.001}
-    class_weight=[0.999, 0.001]
+    class_weight={0: 0.999, 1: 0.001}
+    # class_weight=[0.99, 0.01]
     history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
-        validation_data=eval_dataset, validation_steps=20, callbacks=callbacks)
+        validation_data=eval_dataset, validation_steps=40, callbacks=callbacks)
     save_loss(history)
 
     t1 = time.time()
