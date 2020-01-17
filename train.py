@@ -6,15 +6,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
+import random
 import tensorflow as tf
 import time
 
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
+from tensorflow.keras.layers import Bidirectional, Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 from tensorflow.keras.utils import multi_gpu_model
+
+from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
@@ -76,10 +79,20 @@ def read_file(file_path):
     
     with open(file_path, 'rb') as f_p:
         data = pickle.load(f_p)
-        print('Loaded ', file_path)
+        selected_keys = [k for k in data.keys() if data[k][0] == 1]
+        initial_positives = len(selected_keys)
+        if len(selected_keys) > 1:
+            random.shuffle(selected_keys)
+            selected_keys = selected_keys[:len(selected_keys) // 2]
+        print('Loaded {}, dropped {} positives.'.format(file_path, initial_positives-len(selected_keys)))
+        selected_set = set(selected_keys)
+
         for key in data.keys():
+            label = data[key][0]
+            if label == 1 and key not in selected_set:
+                continue
             names.append(key)
-            labels.append(data[key][0])
+            labels.append(label)
             # labels.append(int(data[key][0] == 'FAKE'))
             # sample = data[key][1][0]
 
@@ -102,7 +115,7 @@ def read_file(file_path):
             samples.append(sample)
             masks.append(mask)
 
-            if data[key][0] == 0:
+            if label == 0:
                 samples.append(np.fliplr(sample))
                 masks.append(mask)
                 labels.append(0)
@@ -110,7 +123,7 @@ def read_file(file_path):
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
     npmasks = np.array(masks, dtype=np.float32)
-    nplabels = np.array(labels, dtype=np.float32)
+    nplabels = np.array(labels, dtype=np.int32)
 
     print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
     # return tf.data.Dataset.from_tensor_slices((npsamples, npmasks, nplabels))
@@ -133,7 +146,7 @@ def read_file(file_path):
 #     dataset = dataset.map(final_map)
 #     return dataset
 
-def input_dataset(input_dir):
+def input_dataset(input_dir, is_training):
     print('Using dataset from: ', input_dir)
     dataset = tf.data.Dataset.list_files(input_dir).shuffle(8192)
     
@@ -147,16 +160,6 @@ def input_dataset(input_dir):
     #     num_parallel_calls=16
     #     )      
 
-    dataset = dataset.apply(tf.data.experimental.parallel_interleave(
-        lambda file_name: tf.data.Dataset.from_tensor_slices(
-            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.float32]))),
-        cycle_length=8,
-        block_length=8,
-        sloppy=True,
-        buffer_output_elements=4,
-        )
-    )
-
     # dataset = dataset.map(
     #     lambda file_name: tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]),
     #     num_parallel_calls=32
@@ -165,55 +168,74 @@ def input_dataset(input_dir):
     #     lambda *x: tf.data.Dataset.from_tensor_slices(x)
     # )
 
+    dataset = dataset.apply(tf.data.experimental.parallel_interleave(
+        lambda file_name: tf.data.Dataset.from_tensor_slices(
+            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
+        cycle_length=8,
+        block_length=8,
+        sloppy=True,
+        buffer_output_elements=4,
+        )
+    )
+
     def final_map(s, m, l):
         return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1, 1])}, tf.reshape(l, [-1])
     dataset = dataset.map(final_map, num_parallel_calls=16)
+
+    # def class_func(sample, mask, label):
+    #     return label
+
+    # if is_training:
+    #     resampler = tf.data.experimental.rejection_resample(class_func, target_dist=[0.3, 0.7])
+    #     dataset = dataset.apply(resampler)
+
     return dataset
 
 
 def fraction_positives(y_true, y_pred):
     return tf.keras.backend.mean(y_true)
 
-class WeightedBinaryCrossEntropy(keras.losses.Loss):
-    """
-    Args:
-      pos_weight: Scalar to affect the positive labels of the loss function.
-      weight: Scalar to affect the entirety of the loss function.
-      from_logits: Whether to compute loss form logits or the probability.
-      reduction: Type of tf.keras.losses.Reduction to apply to loss.
-      name: Name of the loss function.
-    """
-    def __init__(self, pos_weight, weight, from_logits=False,
-                 reduction=keras.losses.Reduction.AUTO,
-                 name='weighted_binary_crossentropy'):
-        super(WeightedBinaryCrossEntropy, self).__init__(reduction=reduction,
-                                                         name=name)
-        self.pos_weight = pos_weight
-        self.weight = weight
-        self.from_logits = from_logits
 
-    def call(self, y_true, y_pred):
-        if not self.from_logits:
-            # Manually calculate the weighted cross entropy.
-            # Formula is qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-            # where z are labels, x is logits, and q is the weight.
-            # Since the values passed are from sigmoid (assuming in this case)
-            # sigmoid(x) will be replaced by y_pred
+# class WeightedBinaryCrossEntropy(tf.keras.losses.Loss):
+#     """
+#     Args:
+#       pos_weight: Scalar to affect the positive labels of the loss function.
+#       weight: Scalar to affect the entirety of the loss function.
+#       from_logits: Whether to compute loss form logits or the probability.
+#       reduction: Type of tf.keras.losses.Reduction to apply to loss.
+#       name: Name of the loss function.
+#     """
+#     def __init__(self, pos_weight, weight, from_logits=False,
+#                  reduction=tf.keras.losses.Reduction.AUTO,
+#                  name='weighted_binary_crossentropy'):
+#         super(WeightedBinaryCrossEntropy, self).__init__(reduction=reduction,
+#                                                          name=name)
+#         self.pos_weight = pos_weight
+#         self.weight = weight
+#         self.from_logits = from_logits
 
-            # qz * -log(sigmoid(x)) 1e-6 is added as an epsilon to stop passing a zero into the log
-            x_1 = y_true * self.pos_weight * -tf.math.log(y_pred + 1e-6)
+#     def call(self, y_true, y_pred):
+#         if not self.from_logits:
+#             # Manually calculate the weighted cross entropy.
+#             # Formula is qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+#             # where z are labels, x is logits, and q is the weight.
+#             # Since the values passed are from sigmoid (assuming in this case)
+#             # sigmoid(x) will be replaced by y_pred
 
-            # (1 - z) * -log(1 - sigmoid(x)). Epsilon is added to prevent passing a zero into the log
-            x_2 = (1 - y_true) * -tf.math.log(1 - y_pred + 1e-6)
+#             # qz * -log(sigmoid(x)) 1e-6 is added as an epsilon to stop passing a zero into the log
+#             x_1 = y_true * self.pos_weight * -tf.math.log(y_pred + 1e-6)
 
-            return tf.add(x_1, x_2) * self.weight 
+#             # (1 - z) * -log(1 - sigmoid(x)). Epsilon is added to prevent passing a zero into the log
+#             x_2 = (1 - y_true) * -tf.math.log(1 - y_pred + 1e-6)
 
-        # Use built in function
-        return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
+#             return tf.add(x_1, x_2) * self.weight 
+
+#         # Use built in function
+#         return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
 
 
 def weighted_ce_logits(y_true, y_pred):
-    return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.5, name='weighted_ce_logits')
+    return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.3, name='weighted_ce_logits')
 
 # TODO: use Bidirectional and try narrower MobileNet
 # TODO: explore removal of projection at the end of MobileNet to LSTM
@@ -229,48 +251,67 @@ def create_model(input_shape, weights):
     input_layer = Input(shape=input_shape)
     input_mask = Input(shape=(input_shape[0], 1))
     # reshape = Reshape([224, 224, 3])(input_layer)
-    mobilenet = MobileNetV2(include_top=False, weights=weights,
+    mobilenet = MobileNetV2(include_top=False,
+        # weights=weights,
+        weights='imagenet',
+        alpha=0.5,
         input_shape=input_shape[-3:],
         pooling='max'
         # pooling=None
     )
 
+    # for layer in mobilenet.layers:
+    #     if (('block_16' not in layer.name) and ('block_15' not in layer.name)
+    #         and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+    #         and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+    #         and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+    #     ):
+    #         layer.trainable = False
+    #     else:
+    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    
     for layer in mobilenet.layers:
-        if (('block_16' not in layer.name) and ('block_15' not in layer.name)
-            and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-            and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-            and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+        if (('block_1_' in layer.name) or ('block_2_' in layer.name)
+            # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
         ):
             layer.trainable = False
-        else:
             print('Layer {} trainable {}'.format(layer.name, layer.trainable))
-    
-    features = mobilenet.output
-    # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
-    # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
-    # # features = MaxPooling2D(pool_size=(2, 2))(features)
-    # features = GlobalMaxPooling2D()(features)
-    features = Flatten()(features)
-    features = Dense(128, activation='elu')(features)
-    # features = Dropout(0.25)(features)
 
-    feature_extractor = Model(inputs=mobilenet.input, outputs=features)
-    # print(feature_extractor.summary())
+    # features = mobilenet.output
+    # # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
+    # # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
+    # # # features = MaxPooling2D(pool_size=(2, 2))(features)
+    # # features = GlobalMaxPooling2D()(features)
+    # features = Flatten()(features)
+    # features = Dense(128, activation='elu')(features)
+    # # features = Dropout(0.25)(features)
+
+    # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
+    # # print(feature_extractor.summary())
     
-    cnn_output = TimeDistributed(feature_extractor)(input_layer)
+    cnn_output = TimeDistributed(mobilenet)(input_layer)
     net = multiply([cnn_output, input_mask])
     net = Masking(mask_value = 0.0)(net)
-    net = GRU(128, return_sequences=False)(net)
-    net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    net = Dropout(0.25)(net)
-    out = Dense(1, #activation='sigmoid', 
-        bias_initializer=tf.keras.initializers.Constant(0.83))(net)
+    net = Bidirectional(GRU(256, return_sequences=True))(net)
+    net = Bidirectional(GRU(256, return_sequences=True))(net)
+    net = SeqWeightedAttention()(net)
+    # net = SeqSelfAttention(attention_activation='sigmoid')(net)
+    # net = ScaledDotProductAttention()(net)
+    # net = Bidirectional(GRU(128, return_sequences=False))(net)
+    # net = Flatten()(net)
+    # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
+    # net = Dropout(0.25)(net)
+    # out = Dense(1, #activation='sigmoid', 
+    #     bias_initializer=tf.keras.initializers.Constant(0.75))(net)
+    out = Dense(1, activation=None)(net)
 
     model = Model(inputs=[input_layer, input_mask], outputs=out)
     
     # This saturates GPU:0 for large models
     # parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
-    # parallel_model = multi_gpu_model(model, gpus=4)
+    # parallel_model = multi_gpu_model(model, gpus=2)
     # print("Training using multiple GPUs..")
 
     # def get_lr_metric(optimizer):
@@ -283,20 +324,20 @@ def create_model(input_shape, weights):
     # But this one needs the optimizer.
     # lr_metric = get_lr_metric(optimizer)
     METRICS = [
-        tf.keras.metrics.TruePositives(name='tp'),
-        tf.keras.metrics.FalsePositives(name='fp'),
-        tf.keras.metrics.TrueNegatives(name='tn'),
-        tf.keras.metrics.FalseNegatives(name='fn'), 
-        tf.keras.metrics.BinaryAccuracy(name='accuracy'),
-        tf.keras.metrics.Precision(name='precision'),
-        tf.keras.metrics.Recall(name='recall'),
-        tf.keras.metrics.AUC(name='auc'),
+        tf.keras.metrics.TruePositives(name='tp', thresholds=0.0),
+        tf.keras.metrics.FalsePositives(name='fp', thresholds=0.0),
+        tf.keras.metrics.TrueNegatives(name='tn', thresholds=0.0),
+        tf.keras.metrics.FalseNegatives(name='fn', thresholds=0.0), 
+        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=0.0),
+        tf.keras.metrics.Precision(name='precision', thresholds=0.0),
+        tf.keras.metrics.Recall(name='recall', thresholds=0.0),
+        # tf.keras.metrics.AUC(name='auc'),
         tf.keras.metrics.BinaryCrossentropy(from_logits=True),
         fraction_positives,
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+    # parallel_model.compile(loss=weighted_ce_logits, optimizer=optimizer, metrics=METRICS)
     # print(parallel_model.summary())
     model.compile(loss=weighted_ce_logits, optimizer=optimizer, metrics=METRICS)
     print(model.summary())
@@ -309,8 +350,8 @@ def save_loss(H):
     N = len(H.history["loss"])
     plt.plot(np.arange(0, N), H.history["loss"], label="train_loss")
     plt.plot(np.arange(0, N), H.history["val_loss"], label="val_loss")
-    plt.plot(np.arange(0, N), H.history["accuracy"], label="train_acc")
-    plt.plot(np.arange(0, N), H.history["val_accuracy"], label="val_acc")
+    plt.plot(np.arange(0, N), H.history["acc"], label="train_acc")
+    plt.plot(np.arange(0, N), H.history["val_acc"], label="val_acc")
     plt.title("Training Loss and Accuracy")
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
@@ -337,8 +378,8 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str, default=None)
     args = parser.parse_args()
 
-    train_dataset = input_dataset(args.train_dir)
-    eval_dataset = input_dataset(args.eval_dir)
+    train_dataset = input_dataset(args.train_dir, is_training=True)
+    eval_dataset = input_dataset(args.eval_dir, is_training=False)
  
     # elem = dataset.make_one_shot_iterator().get_next()
     # with tf.Session() as session:
@@ -353,6 +394,8 @@ if __name__ == '__main__':
         print('Loading model and weights from: ', args.load)
         custom_objs = {
             'fraction_positives':fraction_positives,
+            'SeqWeightedAttention':SeqWeightedAttention,
+            'weighted_ce_logits':weighted_ce_logits,
         }
         model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
     else:
@@ -360,7 +403,7 @@ if __name__ == '__main__':
         model = create_model(in_shape,
             'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
 
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(16).prefetch(2)
+    train_dataset = train_dataset.shuffle(buffer_size=512).batch(8).prefetch(2)
     eval_dataset = eval_dataset.take(512).cache().batch(4).prefetch(2)
     
     num_epochs = 100
@@ -378,16 +421,16 @@ if __name__ == '__main__':
             # "no longer improving" being defined as "no better than 1e-2 less"
             min_delta=1e-3,
             # "no longer improving" being further defined as "for at least 2 epochs"
-            patience=3,
+            patience=10,
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
-        tf.keras.callbacks.LearningRateScheduler(step_decay),
-        # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.045, eta_min=1e-4),
+        # tf.keras.callbacks.LearningRateScheduler(step_decay),
+        CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
     ]
     
-    # class_weight={0: 0.999, 1: 0.001}
-    class_weight=[0.99, 0.01]
-    history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
+    # class_weight={0: 0.9, 1: 0.1}
+    # class_weight=[0.99, 0.01]
+    history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
         validation_data=eval_dataset, validation_steps=128, callbacks=callbacks)
     save_loss(history)
 
