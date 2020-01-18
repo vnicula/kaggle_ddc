@@ -12,9 +12,12 @@ import time
 
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.applications.xception import Xception
+
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Bidirectional, Conv2D, Dense, Dropout, Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
-from tensorflow.keras.layers import Input, GRU, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
+from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
+from tensorflow.keras.layers import Input, GRU, LeakyReLU, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
@@ -26,7 +29,61 @@ from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeighted
 # TODO there's an input warning that input doesnt come from input layer
 # TODO use parallel_interleave
 
-SEQ_LEN = 30
+SEQ_LEN = 16
+
+
+class MesoInception4():
+    def __init__(self, learning_rate = 0.001):
+        self.model = self.init_model()
+        # optimizer = Adam(lr = learning_rate)
+        # self.model.compile(optimizer = optimizer, loss = 'mean_squared_error', metrics = ['accuracy'])
+    
+    def InceptionLayer(self, a, b, c, d):
+        def func(x):
+            x1 = Conv2D(a, (1, 1), padding='same', activation='relu')(x)
+            
+            x2 = Conv2D(b, (1, 1), padding='same', activation='relu')(x)
+            x2 = Conv2D(b, (3, 3), padding='same', activation='relu')(x2)
+            
+            x3 = Conv2D(c, (1, 1), padding='same', activation='relu')(x)
+            x3 = Conv2D(c, (3, 3), dilation_rate = 2, strides = 1, padding='same', activation='relu')(x3)
+            
+            x4 = Conv2D(d, (1, 1), padding='same', activation='relu')(x)
+            x4 = Conv2D(d, (3, 3), dilation_rate = 3, strides = 1, padding='same', activation='relu')(x4)
+
+            y = Concatenate(axis = -1)([x1, x2, x3, x4])
+            
+            return y
+        return func
+    
+    def init_model(self):
+        x = Input(shape = (IMGWIDTH, IMGWIDTH, 3))
+        
+        x1 = self.InceptionLayer(1, 4, 4, 2)(x)
+        x1 = BatchNormalization()(x1)
+        x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
+        
+        x2 = self.InceptionLayer(2, 4, 4, 2)(x1)
+        x2 = BatchNormalization()(x2)
+        x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
+        
+        x3 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x2)
+        x3 = BatchNormalization()(x3)
+        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
+        
+        x4 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = BatchNormalization()(x4)
+        x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
+        
+        y = Flatten()(x4)
+        y = Dropout(0.5)(y)
+        y = Dense(16)(y)
+        y = LeakyReLU(alpha=0.1)(y)
+        y = Dropout(0.5)(y)
+        y = Dense(1, activation = 'sigmoid')(y)
+
+        return Model(inputs = x, outputs = y)
+
 
 class CosineAnnealingScheduler(tf.keras.callbacks.Callback):
     """Cosine annealing scheduler.
@@ -179,7 +236,7 @@ def input_dataset(input_dir, is_training):
     )
 
     def final_map(s, m, l):
-        return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1, 1])}, tf.reshape(l, [-1])
+        return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1])
     dataset = dataset.map(final_map, num_parallel_calls=16)
 
     # def class_func(sample, mask, label):
@@ -249,16 +306,24 @@ def create_model(input_shape, weights):
     # with strategy.scope():
 
     input_layer = Input(shape=input_shape)
-    input_mask = Input(shape=(input_shape[0], 1))
+    input_mask = Input(shape=(input_shape[0]))
     # reshape = Reshape([224, 224, 3])(input_layer)
-    mobilenet = MobileNetV2(include_top=False,
-        # weights=weights,
-        weights='imagenet',
+
+    feature_extractor = MobileNetV2(include_top=False,
+        weights=weights,
+        # weights='imagenet',
         alpha=0.5,
         input_shape=input_shape[-3:],
         pooling='max'
         # pooling=None
     )
+
+    # feature_extractor = Xception(include_top=False, 
+    #     weights='imagenet', 
+    #     # input_tensor=None, 
+    #     input_shape=None, 
+    #     pooling='avg'
+    # )
 
     # for layer in mobilenet.layers:
     #     if (('block_16' not in layer.name) and ('block_15' not in layer.name)
@@ -270,14 +335,14 @@ def create_model(input_shape, weights):
     #     else:
     #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
-    for layer in mobilenet.layers:
-        if (('block_1_' in layer.name) or ('block_2_' in layer.name)
-            # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-        ):
-            layer.trainable = False
-            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    # for layer in mobilenet.layers:
+    #     if (('block_1_' in layer.name) or ('block_2_' in layer.name)
+    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+    #     ):
+    #         layer.trainable = False
+    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
 
     # features = mobilenet.output
     # # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
@@ -291,21 +356,21 @@ def create_model(input_shape, weights):
     # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
     # # print(feature_extractor.summary())
     
-    cnn_output = TimeDistributed(mobilenet)(input_layer)
-    net = multiply([cnn_output, input_mask])
-    net = Masking(mask_value = 0.0)(net)
-    net = Bidirectional(GRU(256, return_sequences=True))(net)
-    net = Bidirectional(GRU(256, return_sequences=True))(net)
-    net = SeqWeightedAttention()(net)
-    # net = SeqSelfAttention(attention_activation='sigmoid')(net)
-    # net = ScaledDotProductAttention()(net)
-    # net = Bidirectional(GRU(128, return_sequences=False))(net)
+    net = TimeDistributed(feature_extractor)(input_layer)
+    # net = multiply([net, input_mask])
+    # net = Masking(mask_value = 0.0)(net)
+    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
+    net = SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(net, mask=input_mask)
+    net = Bidirectional(GRU(256, return_sequences=False))(net, mask=input_mask)
+    # net = SeqWeightedAttention()(net, mask=input_mask)
+    # net = ScaledDotProductAttention()(net, mask=input_mask)
+    # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     # net = Flatten()(net)
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = Dropout(0.25)(net)
-    # out = Dense(1, #activation='sigmoid', 
-    #     bias_initializer=tf.keras.initializers.Constant(0.75))(net)
-    out = Dense(1, activation=None)(net)
+    out = Dense(1, activation='sigmoid', 
+        bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
+    # out = Dense(1, activation='sigmoid')(net)
 
     model = Model(inputs=[input_layer, input_mask], outputs=out)
     
@@ -323,23 +388,26 @@ def create_model(input_shape, weights):
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
     # lr_metric = get_lr_metric(optimizer)
+    thresh = 0.5
     METRICS = [
-        tf.keras.metrics.TruePositives(name='tp', thresholds=0.0),
-        tf.keras.metrics.FalsePositives(name='fp', thresholds=0.0),
-        tf.keras.metrics.TrueNegatives(name='tn', thresholds=0.0),
-        tf.keras.metrics.FalseNegatives(name='fn', thresholds=0.0), 
-        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=0.0),
-        tf.keras.metrics.Precision(name='precision', thresholds=0.0),
-        tf.keras.metrics.Recall(name='recall', thresholds=0.0),
-        # tf.keras.metrics.AUC(name='auc'),
-        tf.keras.metrics.BinaryCrossentropy(from_logits=True),
+        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
+        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
+        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
+        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh), 
+        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
+        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
+        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
+        tf.keras.metrics.AUC(name='auc'),
+        # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
+        tf.keras.metrics.BinaryCrossentropy(),
         fraction_positives,
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    # parallel_model.compile(loss=weighted_ce_logits, optimizer=optimizer, metrics=METRICS)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
+    # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
     # print(parallel_model.summary())
-    model.compile(loss=weighted_ce_logits, optimizer=optimizer, metrics=METRICS)
+    model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
     print(model.summary())
 
     return model
@@ -395,18 +463,23 @@ if __name__ == '__main__':
         custom_objs = {
             'fraction_positives':fraction_positives,
             'SeqWeightedAttention':SeqWeightedAttention,
-            'weighted_ce_logits':weighted_ce_logits,
+            # 'SeqSelfAttention':SeqSelfAttention,
+            # 'weighted_ce_logits':weighted_ce_logits,
         }
         model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
     else:
         print('Training model from scratch.')
         model = create_model(in_shape,
-            'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5')
+            # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+            'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5'
+        )
 
-    train_dataset = train_dataset.shuffle(buffer_size=512).batch(8).prefetch(2)
-    eval_dataset = eval_dataset.take(512).cache().batch(4).prefetch(2)
-    
     num_epochs = 100
+    validation_steps = 128
+    batch_size = 16
+
+    train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
+    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(2)
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
@@ -425,13 +498,15 @@ if __name__ == '__main__':
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
-        CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
+        # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
+            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
-    # class_weight={0: 0.9, 1: 0.1}
+    class_weight={0: 0.6, 1: 0.4}
     # class_weight=[0.99, 0.01]
-    history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
-        validation_data=eval_dataset, validation_steps=128, callbacks=callbacks)
+    history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
+        validation_data=eval_dataset, validation_steps=validation_steps, callbacks=callbacks)
     save_loss(history)
 
     t1 = time.time()
