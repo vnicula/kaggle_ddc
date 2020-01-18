@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
+import cv2
 import math
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,6 +31,28 @@ from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeighted
 # TODO use parallel_interleave
 
 SEQ_LEN = 16
+
+def save_sample_img(name, label, values):
+    IMG_SIZE = values[0].shape[0]    
+
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 4
+    font_scale = 2
+
+    # line_shape = (IMG_SIZE, max_elems*IMG_SIZE, 3)
+    tile_shape = (IMG_SIZE, SEQ_LEN*IMG_SIZE, 3)
+    tile_img = np.zeros(tile_shape, dtype=np.float32)
+    for j in range(len(values)):
+        color = (0, 255, 0) if label == 0 else (255, 0, 0)
+        cv2.putText(tile_img, name, (10, 50),
+                        font_face, font_scale,
+                        color, thickness, 2)
+        
+        tile_img[:, j*IMG_SIZE:(j+1)*IMG_SIZE, :] = values[j]
+
+    plt.imsave(name+'.jpg', tile_img)
+
+    return tile_img
 
 
 class MesoInception4():
@@ -157,25 +180,25 @@ def read_file(file_path):
             my_seq_len = len(data[key][1])
             data_seq_len = min(my_seq_len, SEQ_LEN)
             sample = np.zeros((SEQ_LEN, img_size, img_size, 3), dtype=np.float32)
+            sample_f = np.zeros((SEQ_LEN, img_size, img_size, 3), dtype=np.float32)
             mask = np.zeros(SEQ_LEN, dtype=np.float32)
             for indx in range(data_seq_len):
-                sample[indx] = data[key][1][indx]
+                # I think this is what preprocess input does with 'tf' mode
+                sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
+                sample_f[indx] = np.fliplr(sample[indx])
                 mask[indx] = 1.0
+            
             # sample = preprocess_input(sample)
-            # I think this is what preprocess input does with 'tf' mode
-            sample /= 127.5
-            sample -= 1.
-
-            if my_seq_len < SEQ_LEN:
-                sample[my_seq_len:] = np.zeros((SEQ_LEN-my_seq_len, img_size, img_size, 3), dtype=np.float32)
             # print(sample.shape)
             samples.append(sample)
             masks.append(mask)
 
             if label == 0:
-                samples.append(np.fliplr(sample))
+                samples.append(sample_f)
                 masks.append(mask)
                 labels.append(0)
+                # save_sample_img(key+'_o', 0, sample)
+                # save_sample_img(key+'_f', 0, sample_f)
 
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
@@ -462,8 +485,8 @@ if __name__ == '__main__':
         print('Loading model and weights from: ', args.load)
         custom_objs = {
             'fraction_positives':fraction_positives,
-            'SeqWeightedAttention':SeqWeightedAttention,
-            # 'SeqSelfAttention':SeqSelfAttention,
+            # 'SeqWeightedAttention':SeqWeightedAttention,
+            'SeqSelfAttention':SeqSelfAttention,
             # 'weighted_ce_logits':weighted_ce_logits,
         }
         model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -475,7 +498,7 @@ if __name__ == '__main__':
         )
 
     num_epochs = 100
-    validation_steps = 128
+    validation_steps = 64
     batch_size = 16
 
     train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
