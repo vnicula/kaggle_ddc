@@ -18,7 +18,7 @@ from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
-from tensorflow.keras.layers import Input, GRU, LeakyReLU, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
+from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
@@ -30,7 +30,7 @@ from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeighted
 # TODO there's an input warning that input doesnt come from input layer
 # TODO use parallel_interleave
 
-SEQ_LEN = 16
+SEQ_LEN = 30
 
 def save_sample_img(name, label, values):
     IMG_SIZE = values[0].shape[0]    
@@ -337,7 +337,7 @@ def create_model(input_shape, weights):
         # weights='imagenet',
         alpha=0.5,
         input_shape=input_shape[-3:],
-        pooling='max'
+        pooling='avg'
         # pooling=None
     )
 
@@ -358,23 +358,23 @@ def create_model(input_shape, weights):
     #     else:
     #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
-    # for layer in mobilenet.layers:
-    #     if (('block_1_' in layer.name) or ('block_2_' in layer.name)
-    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-    #     ):
-    #         layer.trainable = False
-    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    for layer in feature_extractor.layers:
+        if (('block_1_' in layer.name) or ('block_2_' in layer.name)
+            and ('block_3_' in layer.name) or ('block_4_' in layer.name)
+            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+        ):
+            layer.trainable = False
+            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
 
     # features = mobilenet.output
-    # # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
-    # # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
+    # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
+    # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
     # # # features = MaxPooling2D(pool_size=(2, 2))(features)
-    # # features = GlobalMaxPooling2D()(features)
+    # features = GlobalMaxPooling2D()(features)
     # features = Flatten()(features)
     # features = Dense(128, activation='elu')(features)
-    # # features = Dropout(0.25)(features)
+    # features = Dropout(0.25)(features)
 
     # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
     # # print(feature_extractor.summary())
@@ -382,10 +382,10 @@ def create_model(input_shape, weights):
     net = TimeDistributed(feature_extractor)(input_layer)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
-    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
-    net = SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(net, mask=input_mask)
-    net = Bidirectional(GRU(256, return_sequences=False))(net, mask=input_mask)
-    # net = SeqWeightedAttention()(net, mask=input_mask)
+    net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
+    # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
+    # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
+    net = SeqWeightedAttention()(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     # net = Flatten()(net)
@@ -485,7 +485,7 @@ if __name__ == '__main__':
         print('Loading model and weights from: ', args.load)
         custom_objs = {
             'fraction_positives':fraction_positives,
-            # 'SeqWeightedAttention':SeqWeightedAttention,
+            'SeqWeightedAttention':SeqWeightedAttention,
             'SeqSelfAttention':SeqSelfAttention,
             # 'weighted_ce_logits':weighted_ce_logits,
         }
@@ -498,8 +498,8 @@ if __name__ == '__main__':
         )
 
     num_epochs = 100
-    validation_steps = 64
-    batch_size = 16
+    validation_steps = 128
+    batch_size = 8
 
     train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
     eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(2)
@@ -517,7 +517,7 @@ if __name__ == '__main__':
             # "no longer improving" being defined as "no better than 1e-2 less"
             min_delta=1e-3,
             # "no longer improving" being further defined as "for at least 2 epochs"
-            patience=10,
+            patience=20,
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
