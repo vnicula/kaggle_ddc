@@ -157,7 +157,7 @@ def read_file(file_path):
     samples = []
     masks = []
     
-    with open(file_path, 'rb') as f_p:
+    with open(file_path.numpy(), 'rb') as f_p:
         data = pickle.load(f_p)
         selected_keys = [k for k in data.keys() if data[k][0] == 1]
         initial_positives = len(selected_keys)
@@ -228,17 +228,20 @@ def read_file(file_path):
 
 def input_dataset(input_dir, is_training):
     print('Using dataset from: ', input_dir)
+
     dataset = tf.data.Dataset.list_files(input_dir).shuffle(8192)
-    
+    # options = tf.data.Options()
+    # options.experimental_deterministic = False
+    # dataset = dataset.with_options(options)
     # dataset = dataset.interleave(
     #     # map_func=lambda file_name: tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]),
     #     map_func=lambda file_name: tf.data.Dataset.from_tensor_slices(
-    #         tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))
+    #         tuple(tf.py_function(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))
     #     ),
-    #     cycle_length=32, #tf.data.experimental.AUTOTUNE
-    #     block_length=64,
+    #     cycle_length=16, #tf.data.experimental.AUTOTUNE
+    #     block_length=1,
     #     num_parallel_calls=16
-    #     )      
+    # )
 
     # dataset = dataset.map(
     #     lambda file_name: tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]),
@@ -250,9 +253,9 @@ def input_dataset(input_dir, is_training):
 
     dataset = dataset.apply(tf.data.experimental.parallel_interleave(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
-            tuple(tf.py_func(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
+            tuple(tf.py_function(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
         cycle_length=8,
-        block_length=8,
+        block_length=1,
         sloppy=True,
         buffer_output_elements=4,
         )
@@ -314,6 +317,36 @@ def fraction_positives(y_true, y_pred):
 #         return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
 
 
+def compile_model(model):
+
+    optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    # TODO keras needs custom_objects when loading models with custom metrics
+    # But this one needs the optimizer.
+    # lr_metric = get_lr_metric(optimizer)
+    thresh = 0.5
+    METRICS = [
+        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
+        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
+        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
+        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh), 
+        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
+        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
+        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
+        tf.keras.metrics.AUC(name='auc'),
+        # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
+        tf.keras.metrics.BinaryCrossentropy(),
+        fraction_positives,
+        # lr_metric,
+    ]
+    # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05)
+    # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+    # print(parallel_model.summary())
+    model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+
+    return model
+
+
 def weighted_ce_logits(y_true, y_pred):
     return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.3, name='weighted_ce_logits')
 
@@ -322,11 +355,6 @@ def weighted_ce_logits(y_true, y_pred):
 # TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
 # oh wait its already in TF doc
 def create_model(input_shape, weights):
-
-    # with tf.device('/cpu:0'):
-    # strategy = tf.distribute.MirroredStrategy()
-    # print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-    # with strategy.scope():
 
     input_layer = Input(shape=input_shape)
     input_mask = Input(shape=(input_shape[0]))
@@ -359,8 +387,8 @@ def create_model(input_shape, weights):
     #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
     for layer in feature_extractor.layers:
-        if (('block_1_' in layer.name) or ('block_2_' in layer.name)
-            and ('block_3_' in layer.name) or ('block_4_' in layer.name)
+        if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
+            # or ('block_3_' in layer.name) or ('block_4_' in layer.name)
             # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
             # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
         ):
@@ -382,9 +410,9 @@ def create_model(input_shape, weights):
     net = TimeDistributed(feature_extractor)(input_layer)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
-    net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
+    # net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
-    # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
+    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
@@ -396,43 +424,15 @@ def create_model(input_shape, weights):
     # out = Dense(1, activation='sigmoid')(net)
 
     model = Model(inputs=[input_layer, input_mask], outputs=out)
-    
+
     # This saturates GPU:0 for large models
     # parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
     # parallel_model = multi_gpu_model(model, gpus=2)
     # print("Training using multiple GPUs..")
 
-    # def get_lr_metric(optimizer):
-    #     def lr(y_true, y_pred):
-    #         return optimizer.lr
-    #     return lr
-
-    optimizer = tf.keras.optimizers.Adam(lr=0.01)
-    # TODO keras needs custom_objects when loading models with custom metrics
-    # But this one needs the optimizer.
-    # lr_metric = get_lr_metric(optimizer)
-    thresh = 0.5
-    METRICS = [
-        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
-        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
-        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
-        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh), 
-        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
-        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
-        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
-        tf.keras.metrics.AUC(name='auc'),
-        # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
-        tf.keras.metrics.BinaryCrossentropy(),
-        fraction_positives,
-        # lr_metric,
-    ]
-    # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
-    # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
-    # print(parallel_model.summary())
-    model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+    compile_model(model)
+    
     print(model.summary())
-
     return model
 
 
@@ -447,7 +447,7 @@ def save_loss(H):
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
-    plt.savefig("loss.jpg")
+    plt.savefig("loss.png")
 
 
 def step_decay(epoch):
@@ -481,34 +481,40 @@ if __name__ == '__main__':
     in_shape = (SEQ_LEN, 224, 224, 3)
 
     # in_shape = (224, 224, 3)
-    if args.load is not None:
-        print('Loading model and weights from: ', args.load)
-        custom_objs = {
-            'fraction_positives':fraction_positives,
-            'SeqWeightedAttention':SeqWeightedAttention,
-            'SeqSelfAttention':SeqSelfAttention,
-            # 'weighted_ce_logits':weighted_ce_logits,
-        }
-        model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
-    else:
-        print('Training model from scratch.')
-        model = create_model(in_shape,
-            # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
-            'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5'
-        )
+    custom_objs = {
+        'fraction_positives':fraction_positives,
+        'SeqWeightedAttention':SeqWeightedAttention,
+        # 'SeqSelfAttention':SeqSelfAttention,
+        # 'weighted_ce_logits':weighted_ce_logits,
+    }
 
-    num_epochs = 100
+    strategy = tf.distribute.MirroredStrategy()
+    print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+
+    with strategy.scope():
+        if args.load is not None:
+            print('Loading model and weights from: ', args.load)
+            model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+        else:
+            print('Training model from scratch.')
+            model = create_model(in_shape,
+                # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+                'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
+            )
+
+    num_epochs = 50
     validation_steps = 128
-    batch_size = 8
+    batch_size = 32
 
     train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
-    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(2)
+    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(2)
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath='mobgru_{epoch}.h5',
             save_best_only=True,
             monitor='val_binary_crossentropy',
+            save_format='tf',
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             # Stop training when `val_loss` is no longer improving
@@ -530,6 +536,11 @@ if __name__ == '__main__':
     # class_weight=[0.99, 0.01]
     history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
         validation_data=eval_dataset, validation_steps=validation_steps, callbacks=callbacks)
+    
+    model.save('final_model.h5')
+    # new_model = tf.keras.models.load_model('my_model')
+    # new_model.summary()
+
     save_loss(history)
 
     t1 = time.time()
