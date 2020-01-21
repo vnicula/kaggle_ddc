@@ -24,6 +24,14 @@ if __name__ == '__main__':
     }
 
     model = load_model(args.load, custom_objects=custom_objs)
+
+    # TODO use tf model maybe as it can be retrained
+    # model.save('tf_model')
+    # print("Loading tf SavedModel")
+    # loaded_model = load_model('tf_model', custom_objects=custom_objs, compile=False)
+    # loaded_model.compile(optimizer=tf.keras.optimizers.Adam(lr=0.025), 
+    #     loss=tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05))
+
     preds = model.predict([np.zeros((1, 30, 224, 224, 3), dtype=np.float32), 
         np.ones((1, 30), dtype=np.float32)], verbose=1)
     print(preds)

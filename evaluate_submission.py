@@ -24,6 +24,7 @@ if __name__ == '__main__':
     submission_df.rename(columns={'label':'score'}, inplace=True)
 
     merged_df = pd.merge(submission_df, meta_df, left_on='filename', right_index=True, how='inner')
+    print(set(submission_df.filename)-set(merged_df.filename))
     assert len(merged_df) == len(submission_df)
     merged_df.fillna({'score':0.5}, inplace=True)
     merged_df['binary_label'] = (merged_df['label'] == 'FAKE').astype(int)

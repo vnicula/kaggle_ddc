@@ -514,7 +514,7 @@ if __name__ == '__main__':
             filepath='mobgru_{epoch}.h5',
             save_best_only=True,
             monitor='val_binary_crossentropy',
-            save_format='tf',
+            # save_format='tf',
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             # Stop training when `val_loss` is no longer improving
