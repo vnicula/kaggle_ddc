@@ -22,6 +22,7 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
+from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
@@ -319,7 +320,11 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    # optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    learning_rate=CustomSchedule(1280)
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
     # lr_metric = get_lr_metric(optimizer)
@@ -376,18 +381,18 @@ def create_model(input_shape, weights):
     #     pooling='avg'
     # )
 
-    for layer in feature_extractor.layers:
-        layer.trainable = False
-
     # for layer in feature_extractor.layers:
-    #     if (('block_16' not in layer.name) and ('block_15' not in layer.name)
-    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-    #     ):
-    #         layer.trainable = False
-    #     else:
-    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    #     layer.trainable = False
+
+    for layer in feature_extractor.layers:
+        if (('block_16' not in layer.name) # and ('block_15' not in layer.name)
+            # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+        ):
+            layer.trainable = False
+        else:
+            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
     # for layer in feature_extractor.layers:
     #     if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
@@ -411,15 +416,17 @@ def create_model(input_shape, weights):
     # # print(feature_extractor.summary())
     
     net = TimeDistributed(feature_extractor)(input_layer)
+    net = Encoder(num_layers=2, d_model=1280, num_heads=8, dff=1024,
+        maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
-    net = SeqWeightedAttention()(net, mask=input_mask)
+    # net = SeqWeightedAttention()(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
-    # net = Flatten()(net)
+    net = Flatten()(net)
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
@@ -505,7 +512,7 @@ if __name__ == '__main__':
                 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
             )
 
-    num_epochs = 50
+    num_epochs = 100
     validation_steps = 64
     batch_size = 32
 
@@ -531,8 +538,8 @@ if __name__ == '__main__':
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
+        # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
+        #     factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
     class_weight={0: 0.6, 1: 0.4}
