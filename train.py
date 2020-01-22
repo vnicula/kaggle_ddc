@@ -22,7 +22,7 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
-from multi_head import Encoder, CustomSchedule
+# from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
@@ -320,10 +320,10 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    # optimizer = tf.keras.optimizers.Adam(lr=0.025)
-    learning_rate=CustomSchedule(1280)
-    optimizer = tf.keras.optimizers.Adam(
-        learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+    optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    # learning_rate=CustomSchedule(1280)
+    # optimizer = tf.keras.optimizers.Adam(
+    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
@@ -416,17 +416,17 @@ def create_model(input_shape, weights):
     # # print(feature_extractor.summary())
     
     net = TimeDistributed(feature_extractor)(input_layer)
-    net = Encoder(num_layers=2, d_model=1280, num_heads=8, dff=1024,
-        maximum_position_encoding=1000)(net, mask=input_mask)
+    # net = Encoder(num_layers=2, d_model=1280, num_heads=8, dff=1024,
+    #     maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
-    # net = SeqWeightedAttention()(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
+    net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
-    net = Flatten()(net)
+    # net = Flatten()(net)
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
@@ -530,16 +530,14 @@ if __name__ == '__main__':
             # Stop training when `val_loss` is no longer improving
             # monitor='val_loss', # watch out for reg losses
             monitor='val_binary_crossentropy',
-            # "no longer improving" being defined as "no better than 1e-2 less"
             min_delta=1e-3,
-            # "no longer improving" being further defined as "for at least 2 epochs"
             patience=20,
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-        # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-        #     factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
+            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
     class_weight={0: 0.6, 1: 0.4}
