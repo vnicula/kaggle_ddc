@@ -365,7 +365,7 @@ def create_model(input_shape, weights):
         # weights='imagenet',
         alpha=0.5,
         input_shape=input_shape[-3:],
-        pooling='avg'
+        pooling='max'
         # pooling=None
     )
 
@@ -376,24 +376,27 @@ def create_model(input_shape, weights):
     #     pooling='avg'
     # )
 
-    # for layer in mobilenet.layers:
+    for layer in feature_extractor.layers:
+        layer.trainable = False
+
+    # for layer in feature_extractor.layers:
     #     if (('block_16' not in layer.name) and ('block_15' not in layer.name)
-    #         and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-    #         and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-    #         and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
     #     ):
     #         layer.trainable = False
     #     else:
     #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
-    for layer in feature_extractor.layers:
-        if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
-            # or ('block_3_' in layer.name) or ('block_4_' in layer.name)
-            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-        ):
-            layer.trainable = False
-            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+    # for layer in feature_extractor.layers:
+    #     if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
+    #         or ('block_3_' in layer.name) or ('block_4_' in layer.name)
+    #         or ('block_5_' in layer.name) or ('block_6_' in layer.name)
+    #         or ('block_7_' in layer.name) or ('block_8_' in layer.name)
+    #     ):
+    #         layer.trainable = False
+    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
 
     # features = mobilenet.output
     # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
@@ -412,14 +415,14 @@ def create_model(input_shape, weights):
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
-    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
+    # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     # net = Flatten()(net)
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = Dropout(0.25)(net)
-    out = Dense(1, activation='sigmoid', 
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
         bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
     # out = Dense(1, activation='sigmoid')(net)
 
@@ -503,7 +506,7 @@ if __name__ == '__main__':
             )
 
     num_epochs = 50
-    validation_steps = 128
+    validation_steps = 64
     batch_size = 32
 
     train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
