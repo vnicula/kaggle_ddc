@@ -11,6 +11,8 @@ import random
 import tensorflow as tf
 import time
 
+from scipy.interpolate import griddata
+
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -31,7 +33,9 @@ from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeighted
 # TODO there's an input warning that input doesnt come from input layer
 # TODO use parallel_interleave
 
-SEQ_LEN = 30
+SEQ_LEN = 5
+# FEAT_SHAPE = (300,)
+FEAT_SHAPE = (224, 224, 3)
 
 def save_sample_img(name, label, values):
     IMG_SIZE = values[0].shape[0]    
@@ -54,6 +58,74 @@ def save_sample_img(name, label, values):
     plt.imsave(name+'.jpg', tile_img)
 
     return tile_img
+
+
+def azimuthalAverage(image, center=None):
+    """
+    Calculate the azimuthally averaged radial profile.
+    image - The 2D image
+    center - The [x,y] pixel coordinates used as the center. The default is 
+             None, which then uses the center of the image (including 
+             fracitonal pixels).
+    
+    """
+    # Calculate the indices from the image
+    y, x = np.indices(image.shape)
+
+    if not center:
+        center = np.array([(x.max()-x.min())/2.0, (x.max()-x.min())/2.0])
+
+    r = np.hypot(x - center[0], y - center[1])
+
+    # Get sorted radii
+    ind = np.argsort(r.flat)
+    r_sorted = r.flat[ind]
+    i_sorted = image.flat[ind]
+
+    # Get the integer part of the radii (bin size = 1)
+    r_int = r_sorted.astype(int)
+
+    # Find all pixels that fall within each radial bin.
+    deltar = r_int[1:] - r_int[:-1]  # Assumes all radii represented
+    rind = np.where(deltar)[0]       # location of changed radius
+    nr = rind[1:] - rind[:-1]        # number of radius bin
+    
+    # Cumulative sum to figure out sums for each radius bin
+    csim = np.cumsum(i_sorted, dtype=float)
+    tbin = csim[rind[1:]] - csim[rind[:-1]]
+
+    radial_prof = tbin / nr
+
+    return radial_prof
+
+
+def get_simple_feature(face):
+    t0 = time.time()
+
+    N = 300
+    img = np.dot(face[...,:3], [0.2989, 0.5870, 0.1140])    
+    # Calculate FFT
+    f = np.fft.fft2(img)
+    fshift = np.fft.fftshift(f)
+    magnitude_spectrum = 20*np.log(np.abs(fshift))
+    # Calculate the azimuthally averaged 1D power spectrum
+    psd1D = azimuthalAverage(magnitude_spectrum)
+
+    # Interpolation
+    points = np.linspace(0,N,num=psd1D.size) 
+    xi = np.linspace(0,N,num=N) 
+    interpolated = griddata(points,psd1D,xi,method='cubic')
+    
+    # Normalization
+    interpolated /= interpolated[0]
+    # print('simple feature shape: {}, took {}'.format(interpolated.shape, time.time()-t0))
+
+    return interpolated             
+
+
+def get_image_feature(face):
+    # I think this is what preprocess input does with 'tf' mode
+    return (face.astype(np.float32) / 127.5) - 1.0
 
 
 class MesoInception4():
@@ -167,6 +239,8 @@ def read_file(file_path):
             selected_keys = selected_keys[:len(selected_keys) // 2]
         print('Loaded {}, dropped {} positives.'.format(file_path, initial_positives-len(selected_keys)))
         selected_set = set(selected_keys)
+        feature_func = get_image_feature
+        # feature_func = get_simple_feature
 
         for key in data.keys():
             label = data[key][0]
@@ -174,19 +248,19 @@ def read_file(file_path):
                 continue
             names.append(key)
             labels.append(label)
-            # labels.append(int(data[key][0] == 'FAKE'))
             # sample = data[key][1][0]
 
-            img_size = data[key][1][0].shape[0]
+            # feat_shape = feature_func(data[key][1][0]).shape
+            feat_shape = FEAT_SHAPE
             my_seq_len = len(data[key][1])
             data_seq_len = min(my_seq_len, SEQ_LEN)
-            sample = np.zeros((SEQ_LEN, img_size, img_size, 3), dtype=np.float32)
-            sample_f = np.zeros((SEQ_LEN, img_size, img_size, 3), dtype=np.float32)
+            sample = np.zeros((SEQ_LEN,) + feat_shape, dtype=np.float32)
+            sample_f = np.zeros((SEQ_LEN,) + feat_shape, dtype=np.float32)
             mask = np.zeros(SEQ_LEN, dtype=np.float32)
             for indx in range(data_seq_len):
-                # I think this is what preprocess input does with 'tf' mode
-                sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
-                sample_f[indx] = np.fliplr(sample[indx])
+                sample[indx] = feature_func(data[key][1][indx])
+                if label == 0:
+                    sample_f[indx] = feature_func(np.fliplr(data[key][1][indx]))
                 mask[indx] = 1.0
             
             # sample = preprocess_input(sample)
@@ -263,7 +337,7 @@ def input_dataset(input_dir, is_training):
     )
 
     def final_map(s, m, l):
-        return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1])
+        return  {'input_1': tf.reshape(s, (-1,)+FEAT_SHAPE), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1])
     dataset = dataset.map(final_map, num_parallel_calls=16)
 
     # def class_func(sample, mask, label):
@@ -370,8 +444,8 @@ def create_model(input_shape, weights):
         # weights='imagenet',
         alpha=0.5,
         input_shape=input_shape[-3:],
-        pooling='max'
-        # pooling=None
+        # pooling='avg'
+        pooling=None
     )
 
     # feature_extractor = Xception(include_top=False, 
@@ -381,18 +455,18 @@ def create_model(input_shape, weights):
     #     pooling='avg'
     # )
 
-    # for layer in feature_extractor.layers:
-    #     layer.trainable = False
-
     for layer in feature_extractor.layers:
-        if (('block_16' not in layer.name) # and ('block_15' not in layer.name)
-            # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-            # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-            # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-        ):
-            layer.trainable = False
-        else:
-            print('Layer {} trainable {}'.format(layer.name, layer.trainable))
+        layer.trainable = False
+
+    # for layer in feature_extractor.layers:
+    #     if (('block_16' not in layer.name) # and ('block_15' not in layer.name)
+    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
+    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
+    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
+    #     ):
+    #         layer.trainable = False
+    #     else:
+    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
     
     # for layer in feature_extractor.layers:
     #     if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
@@ -415,20 +489,22 @@ def create_model(input_shape, weights):
     # feature_extractor = Model(inputs=mobilenet.input, outputs=features)
     # # print(feature_extractor.summary())
     
+    # net = input_layer
     net = TimeDistributed(feature_extractor)(input_layer)
     # net = Encoder(num_layers=2, d_model=1280, num_heads=8, dff=1024,
     #     maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
-    # net = Bidirectional(LSTM(256, return_sequences=True))(net, mask=input_mask)
+    # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
+    net = TimeDistributed(Flatten())(net)
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
-    # net = Flatten()(net)
+    
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    # net = Dropout(0.25)(net)
+    net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
         bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
     # out = Dense(1, activation='sigmoid')(net)
@@ -488,9 +564,8 @@ if __name__ == '__main__':
     #     print(npelem[0], npelem[1])
     #     print(npelem[0].shape)
 
-    in_shape = (SEQ_LEN, 224, 224, 3)
+    in_shape = (SEQ_LEN,) + FEAT_SHAPE
 
-    # in_shape = (224, 224, 3)
     custom_objs = {
         'fraction_positives':fraction_positives,
         'SeqWeightedAttention':SeqWeightedAttention,
@@ -516,7 +591,7 @@ if __name__ == '__main__':
     validation_steps = 64
     batch_size = 32
 
-    train_dataset = train_dataset.shuffle(buffer_size=512).batch(batch_size).prefetch(2)
+    train_dataset = train_dataset.shuffle(buffer_size=5).batch(batch_size).prefetch(2)
     eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(2)
 
     callbacks = [
