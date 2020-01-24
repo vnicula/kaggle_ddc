@@ -18,6 +18,7 @@ MAX_DETECTION_SIZE = 960
 TRAIN_FACE_SIZE = 224
 TRAIN_FRAME_COUNT = 32
 TRAIN_FPS = 3
+SKIP_INITIAL_SEC = 8
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
@@ -45,7 +46,10 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
     #TODO make this robust to video reading errors
     for i in range(frame_num):
         success = vidcap.grab()
+            
         if success:
+            if i < SKIP_INITIAL_SEC * fps:
+                continue
             if i % (skip_n+1) == 0:
                 success, im = vidcap.retrieve()
                 if success:
@@ -129,7 +133,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
 def extract_one_sample_faces(video_path, max_detection_size, max_frame_count, face_size=0):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
-    _, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, )
+    _, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, TRAIN_FPS)
     parsing = time.time() - start
     faces = detect_facenet_pytorch(detector, imrs, 256)
     faces = [i for i in faces if i is not None]

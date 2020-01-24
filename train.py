@@ -10,6 +10,7 @@ import pickle
 import random
 import tensorflow as tf
 import time
+import threading
 
 from scipy.interpolate import griddata
 
@@ -48,6 +49,7 @@ if gpus:
 SEQ_LEN = 30
 # FEAT_SHAPE = (300,)
 FEAT_SHAPE = (224, 224, 3)
+D_MODEL = 128
 
 def save_sample_img(name, label, values):
     IMG_SIZE = values[0].shape[0]    
@@ -297,6 +299,17 @@ def read_file(file_path):
     # return tf.data.Dataset.from_tensor_slices((npsamples, npmasks, nplabels))
     return npsamples, npmasks, nplabels
 
+"""
+npsamples = np.zeros((64,) + (SEQ_LEN,) + FEAT_SHAPE, dtype=np.float32)
+npmasks = np.ones((64,) + (SEQ_LEN,), dtype=np.float32)
+nplabels = np.ones((64,), dtype = np.int32)
+def fake_read_file(file_path):
+    t0 = time.time()
+
+    print('Fake read {}, thread {}, took {}'.format(file_path, threading.get_ident(), time.time()-t0))
+    return npsamples, npmasks, nplabels
+"""
+
 # def input_dataset(input_dir):
 #     print('Using dataset from: ', input_dir)
 #     dataset = tf.data.Dataset.list_files(input_dir)
@@ -313,6 +326,35 @@ def read_file(file_path):
 #         return  {'input_1': tf.reshape(s, [-1, 224, 224, 3]), 'input_2': tf.reshape(m, [-1, 1])}, tf.reshape(l, [-1])
 #     dataset = dataset.map(final_map)
 #     return dataset
+
+# TODO wip finish the optimal one
+# def input_dataset(input_dir, is_training):
+#     print('Using dataset from: ', input_dir)
+
+#     dataset = tf.data.Dataset.list_files(input_dir).shuffle(1024)
+#     # dataset = tf.data.Dataset.range(1, 2000)
+#     def map_function_wrapper(filename):
+#         features, masks, labels = tf.py_function(
+#            read_file, [filename], (tf.float32, tf.float32, tf.int32))
+        
+#         return tf.data.Dataset.from_tensor_slices((features, masks, labels))
+#         # return tf.data.Dataset.from_tensor_slices((npsamples, npmasks, nplabels))
+    
+#     dataset = dataset.map(
+#         map_function_wrapper,
+#         num_parallel_calls=8
+#     ).prefetch(4)
+#     dataset = dataset.interleave(
+#         # lambda *x: tf.data.Dataset.from_tensor_slices(x).map(
+#         lambda x: x.map(
+#             lambda s, m, l: ({'input_1': tf.reshape(s, (-1,)+FEAT_SHAPE), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1]))
+#         ),
+#         cycle_length=16,
+#         num_parallel_calls=16
+#     )
+
+#     return dataset
+
 
 def input_dataset(input_dir, is_training):
     print('Using dataset from: ', input_dir)
@@ -342,9 +384,9 @@ def input_dataset(input_dir, is_training):
     dataset = dataset.apply(tf.data.experimental.parallel_interleave(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
             tuple(tf.py_function(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
-        cycle_length=10,
+        cycle_length=8,
         block_length=1,
-        sloppy=True,
+        sloppy=False,
         buffer_output_elements=1,
         )
     )
@@ -408,7 +450,7 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model):
 
     # optimizer = tf.keras.optimizers.Adam(lr=0.025)
-    learning_rate=CustomSchedule(512)
+    learning_rate=CustomSchedule(D_MODEL)
     optimizer = tf.keras.optimizers.Adam(
         learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
@@ -505,9 +547,10 @@ def create_model(input_shape, weights):
     # net = input_layer
     net = TimeDistributed(feature_extractor)(input_layer)
     # net = TimeDistributed(Conv2D(256, (1, 1), strides=(1, 1), padding='valid', activation='relu'))(net)
-    net = TimeDistributed(Conv2D(512, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
+    net = TimeDistributed(Conv2D(D_MODEL, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
+    net = TimeDistributed(BatchNormalization())(net)
     net = TimeDistributed(GlobalMaxPooling2D())(net)
-    net = Encoder(num_layers=2, d_model=512, num_heads=4, dff=1024,
+    net = Encoder(num_layers=2, d_model=D_MODEL, num_heads=4, dff=512,
         maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
@@ -627,11 +670,11 @@ if __name__ == '__main__':
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
+        # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
+        #     factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
-    class_weight={0: 0.6, 1: 0.4}
+    class_weight={0: 0.65, 1: 0.35}
     # class_weight=[0.99, 0.01]
     history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
         validation_data=eval_dataset, validation_steps=validation_steps, callbacks=callbacks)
