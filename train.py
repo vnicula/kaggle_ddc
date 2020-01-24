@@ -24,16 +24,28 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
-# from multi_head import Encoder, CustomSchedule
+from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
 # tf.enable_eager_execution()
 
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+  try:
+    # Currently, memory growth needs to be the same across GPUs
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Memory growth must be set before GPUs have been initialized
+    print(e)
+
 # TODO there's an input warning that input doesnt come from input layer
 # TODO use parallel_interleave
 
-SEQ_LEN = 5
+SEQ_LEN = 30
 # FEAT_SHAPE = (300,)
 FEAT_SHAPE = (224, 224, 3)
 
@@ -225,7 +237,7 @@ def rescale_list(input_list, size):
 # TODO oversample REAL
 def read_file(file_path):
     
-    names = []
+    # names = []
     labels = []
     samples = []
     masks = []
@@ -234,9 +246,9 @@ def read_file(file_path):
         data = pickle.load(f_p)
         selected_keys = [k for k in data.keys() if data[k][0] == 1]
         initial_positives = len(selected_keys)
-        if len(selected_keys) > 1:
+        if len(selected_keys) > 2:
             random.shuffle(selected_keys)
-            selected_keys = selected_keys[:len(selected_keys) // 2]
+            selected_keys = selected_keys[:int(len(selected_keys) * 0.7)]
         print('Loaded {}, dropped {} positives.'.format(file_path, initial_positives-len(selected_keys)))
         selected_set = set(selected_keys)
         feature_func = get_image_feature
@@ -246,8 +258,7 @@ def read_file(file_path):
             label = data[key][0]
             if label == 1 and key not in selected_set:
                 continue
-            names.append(key)
-            labels.append(label)
+            # names.append(key)
             # sample = data[key][1][0]
 
             # feat_shape = feature_func(data[key][1][0]).shape
@@ -264,9 +275,10 @@ def read_file(file_path):
                 mask[indx] = 1.0
             
             # sample = preprocess_input(sample)
-            # print(sample.shape)
+            # print(file_path, len(samples))
             samples.append(sample)
             masks.append(mask)
+            labels.append(label)
 
             if label == 0:
                 samples.append(sample_f)
@@ -274,7 +286,8 @@ def read_file(file_path):
                 labels.append(0)
                 # save_sample_img(key+'_o', 0, sample)
                 # save_sample_img(key+'_f', 0, sample_f)
-
+        
+        del data
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
     npmasks = np.array(masks, dtype=np.float32)
@@ -304,7 +317,7 @@ def read_file(file_path):
 def input_dataset(input_dir, is_training):
     print('Using dataset from: ', input_dir)
 
-    dataset = tf.data.Dataset.list_files(input_dir).shuffle(8192)
+    dataset = tf.data.Dataset.list_files(input_dir).shuffle(1024)
     # options = tf.data.Options()
     # options.experimental_deterministic = False
     # dataset = dataset.with_options(options)
@@ -329,10 +342,10 @@ def input_dataset(input_dir, is_training):
     dataset = dataset.apply(tf.data.experimental.parallel_interleave(
         lambda file_name: tf.data.Dataset.from_tensor_slices(
             tuple(tf.py_function(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
-        cycle_length=8,
+        cycle_length=10,
         block_length=1,
         sloppy=True,
-        buffer_output_elements=4,
+        buffer_output_elements=1,
         )
     )
 
@@ -394,10 +407,10 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.025)
-    # learning_rate=CustomSchedule(1280)
-    # optimizer = tf.keras.optimizers.Adam(
-    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+    # optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    learning_rate=CustomSchedule(512)
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
@@ -491,20 +504,23 @@ def create_model(input_shape, weights):
     
     # net = input_layer
     net = TimeDistributed(feature_extractor)(input_layer)
-    # net = Encoder(num_layers=2, d_model=1280, num_heads=8, dff=1024,
-    #     maximum_position_encoding=1000)(net, mask=input_mask)
+    # net = TimeDistributed(Conv2D(256, (1, 1), strides=(1, 1), padding='valid', activation='relu'))(net)
+    net = TimeDistributed(Conv2D(512, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
+    net = TimeDistributed(GlobalMaxPooling2D())(net)
+    net = Encoder(num_layers=2, d_model=512, num_heads=4, dff=1024,
+        maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
-    net = TimeDistributed(Flatten())(net)
+    # net = TimeDistributed(Flatten())(net)
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    net = Dropout(0.25)(net)
+    # net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
         bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
     # out = Dense(1, activation='sigmoid')(net)
@@ -587,12 +603,12 @@ if __name__ == '__main__':
                 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
             )
 
-    num_epochs = 100
-    validation_steps = 64
-    batch_size = 32
+    num_epochs = 1000
+    validation_steps = 32
+    batch_size = 128
 
-    train_dataset = train_dataset.shuffle(buffer_size=5).batch(batch_size).prefetch(2)
-    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(2)
+    train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(1)
+    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(1)
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
@@ -606,7 +622,7 @@ if __name__ == '__main__':
             # monitor='val_loss', # watch out for reg losses
             monitor='val_binary_crossentropy',
             min_delta=1e-3,
-            patience=20,
+            patience=25,
             verbose=1),
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),

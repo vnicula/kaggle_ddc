@@ -17,20 +17,21 @@ MARGIN = 16
 MAX_DETECTION_SIZE = 960
 TRAIN_FACE_SIZE = 224
 TRAIN_FRAME_COUNT = 32
+TRAIN_FPS = 3
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
 detector = MTCNN(device=device, margin=MARGIN, min_face_size=20, post_process=False, keep_all=False, select_largest=False)
 
-def parse_vid(video_path, max_detection_size, max_frame_count):
+def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
     vidcap = cv2.VideoCapture(video_path)
     frame_num = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print('cv2.CAP_PROP_FRAME_COUNT: {}'.format(frame_num))
     fps = vidcap.get(cv2.CAP_PROP_FPS)
     width = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)) # float
     height = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # float
-
-    skip_n = max(math.floor(frame_num / max_frame_count), 0)
+    print('cv2.FRAME_COUNT {}, cv2.PROP_FPS {}, cv2.FRAME_WIDTH {}, cv2.FRAME_HEIGHT {}'.format(frame_num, fps, width, height))
+    
+    skip_n = max(math.floor(fps / sample_fps), 0)
     max_dimension = max(width, height)
     img_scale = 1.0
     if max_dimension > max_detection_size:
@@ -42,11 +43,10 @@ def parse_vid(video_path, max_detection_size, max_frame_count):
     count = 0
 
     #TODO make this robust to video reading errors
-    while True:
-        # success, im = vidcap.read()
+    for i in range(frame_num):
         success = vidcap.grab()
         if success:
-            if count % (skip_n+1) == 0:
+            if i % (skip_n+1) == 0:
                 success, im = vidcap.retrieve()
                 if success:
                     im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
@@ -56,7 +56,9 @@ def parse_vid(video_path, max_detection_size, max_frame_count):
                         imr = im
                     imgs.append(im)
                     imrs.append(imr)
-            count += 1
+                    count += 1
+                    if count >= max_frame_count:
+                        break
         else:
             break
 
@@ -127,7 +129,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
 def extract_one_sample_faces(video_path, max_detection_size, max_frame_count, face_size=0):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
-    _, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count)
+    _, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, )
     parsing = time.time() - start
     faces = detect_facenet_pytorch(detector, imrs, 256)
     faces = [i for i in faces if i is not None]
@@ -141,7 +143,7 @@ def extract_one_sample_faces(video_path, max_detection_size, max_frame_count, fa
 def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_count, face_size):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
-    imgs, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count)
+    imgs, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, TRAIN_FPS)
     parsing = time.time() - start
     # faces = detect_facenet_pytorch(detector, imgs, 256)
     faces = detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size)
@@ -156,8 +158,8 @@ def run(input_dir, slice_size, already_processed, first_slice):
     slice_prefix = os.path.basename(input_dir).split('_')[-1]
     dataset_slice = {}
     slices = first_slice
-    with open(os.path.join(input_dir, META_DATA)) as json_file:
-        label_data = json.load(json_file)
+    # with open(os.path.join(input_dir, META_DATA)) as json_file:
+    #     label_data = json.load(json_file)
 
     for i in tqdm.tqdm(range(len(f_list))):
         f_name = f_list[i]
@@ -175,7 +177,9 @@ def run(input_dir, slice_size, already_processed, first_slice):
         if suffix.lower() in ['mp4', 'avi', 'mov']:
             # Parse video
             # faces = extract_one_sample(f_path, img_scale=0.5, skip_n=4)
-            label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
+            # label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
+            label = 0
+
             faces = extract_one_sample_bbox(f_path, label, max_detection_size=MAX_DETECTION_SIZE, 
                 max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
             if len(faces) > 0:

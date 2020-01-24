@@ -24,6 +24,7 @@ if __name__ == '__main__':
     }
 
     model = load_model(args.load, custom_objects=custom_objs)
+    print(model.summary())
 
     # TODO use tf model maybe as it can be retrained
     # model.save('tf_model')
