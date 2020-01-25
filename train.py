@@ -449,10 +449,10 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    # optimizer = tf.keras.optimizers.Adam(lr=0.025)
-    learning_rate=CustomSchedule(D_MODEL)
-    optimizer = tf.keras.optimizers.Adam(
-        learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+    optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    # learning_rate=CustomSchedule(D_MODEL)
+    # optimizer = tf.keras.optimizers.Adam(
+    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
@@ -499,8 +499,8 @@ def create_model(input_shape, weights):
         # weights='imagenet',
         alpha=0.5,
         input_shape=input_shape[-3:],
-        # pooling='avg'
-        pooling=None
+        pooling='avg'
+        # pooling=None
     )
 
     # feature_extractor = Xception(include_top=False, 
@@ -547,11 +547,11 @@ def create_model(input_shape, weights):
     # net = input_layer
     net = TimeDistributed(feature_extractor)(input_layer)
     # net = TimeDistributed(Conv2D(256, (1, 1), strides=(1, 1), padding='valid', activation='relu'))(net)
-    net = TimeDistributed(Conv2D(D_MODEL, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
-    net = TimeDistributed(BatchNormalization())(net)
-    net = TimeDistributed(GlobalMaxPooling2D())(net)
-    net = Encoder(num_layers=2, d_model=D_MODEL, num_heads=4, dff=512,
-        maximum_position_encoding=1000)(net, mask=input_mask)
+    # net = TimeDistributed(Conv2D(D_MODEL, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
+    # net = TimeDistributed(BatchNormalization())(net)
+    # net = TimeDistributed(GlobalMaxPooling2D())(net)
+    # net = Encoder(num_layers=2, d_model=D_MODEL, num_heads=4, dff=512,
+    #     maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
@@ -670,8 +670,8 @@ if __name__ == '__main__':
         tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-        # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-        #     factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
+            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
     class_weight={0: 0.65, 1: 0.35}
