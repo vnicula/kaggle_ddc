@@ -141,7 +141,7 @@ custom_objs = {
 def run(file_list):
 
     prediction_list = []
-    model = load_model('final_model_old.h5', custom_objects=custom_objs)
+    model = load_model('candidate.h5', custom_objects=custom_objs)
     len_file_list = len(file_list)
     for i in range(len_file_list):
         f_name = os.path.basename(file_list[i])

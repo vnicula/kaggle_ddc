@@ -1,7 +1,8 @@
-import tensorflow.keras as keras
-import tensorflow.keras.backend as K
+import tensorflow as tf
 
-class ScaledDotProductAttention(keras.layers.Layer):
+K = tf.keras.backend
+
+class ScaledDotProductAttention(tf.keras.layers.Layer):
     r"""The attention layer that takes three inputs representing queries, keys and values.
     \text{Attention}(Q, K, V) = \text{softmax}(\frac{Q K^T}{\sqrt{d_k}}) V
     See: https://arxiv.org/pdf/1706.03762.pdf
@@ -71,7 +72,7 @@ class ScaledDotProductAttention(keras.layers.Layer):
         return v
 
 
-class SeqSelfAttention(keras.layers.Layer):
+class SeqSelfAttention(tf.keras.layers.Layer):
 
     ATTENTION_TYPE_ADD = 'additive'
     ATTENTION_TYPE_MUL = 'multiplicative'
@@ -127,15 +128,15 @@ class SeqSelfAttention(keras.layers.Layer):
 
         self.use_additive_bias = use_additive_bias
         self.use_attention_bias = use_attention_bias
-        self.kernel_initializer = keras.initializers.get(kernel_initializer)
-        self.bias_initializer = keras.initializers.get(bias_initializer)
-        self.kernel_regularizer = keras.regularizers.get(kernel_regularizer)
-        self.bias_regularizer = keras.regularizers.get(bias_regularizer)
-        self.kernel_constraint = keras.constraints.get(kernel_constraint)
-        self.bias_constraint = keras.constraints.get(bias_constraint)
-        self.attention_activation = keras.activations.get(attention_activation)
+        self.kernel_initializer = tf.keras.initializers.get(kernel_initializer)
+        self.bias_initializer = tf.keras.initializers.get(bias_initializer)
+        self.kernel_regularizer = tf.keras.regularizers.get(kernel_regularizer)
+        self.bias_regularizer = tf.keras.regularizers.get(bias_regularizer)
+        self.kernel_constraint = tf.keras.constraints.get(kernel_constraint)
+        self.bias_constraint = tf.keras.constraints.get(bias_constraint)
+        self.attention_activation = tf.keras.activations.get(attention_activation)
         self.attention_regularizer_weight = attention_regularizer_weight
-        self._backend = keras.backend.backend()
+        self._backend = tf.keras.backend.backend()
 
         if attention_type == SeqSelfAttention.ATTENTION_TYPE_ADD:
             self.Wx, self.Wt, self.bh = None, None, None
@@ -154,13 +155,13 @@ class SeqSelfAttention(keras.layers.Layer):
             'history_only': self.history_only,
             'use_additive_bias': self.use_additive_bias,
             'use_attention_bias': self.use_attention_bias,
-            'kernel_initializer': keras.initializers.serialize(self.kernel_initializer),
-            'bias_initializer': keras.initializers.serialize(self.bias_initializer),
-            'kernel_regularizer': keras.regularizers.serialize(self.kernel_regularizer),
-            'bias_regularizer': keras.regularizers.serialize(self.bias_regularizer),
-            'kernel_constraint': keras.constraints.serialize(self.kernel_constraint),
-            'bias_constraint': keras.constraints.serialize(self.bias_constraint),
-            'attention_activation': keras.activations.serialize(self.attention_activation),
+            'kernel_initializer': tf.keras.initializers.serialize(self.kernel_initializer),
+            'bias_initializer': tf.keras.initializers.serialize(self.bias_initializer),
+            'kernel_regularizer': tf.keras.regularizers.serialize(self.kernel_regularizer),
+            'bias_regularizer': tf.keras.regularizers.serialize(self.bias_regularizer),
+            'kernel_constraint': tf.keras.constraints.serialize(self.kernel_constraint),
+            'bias_constraint': tf.keras.constraints.serialize(self.bias_constraint),
+            'attention_activation': tf.keras.activations.serialize(self.attention_activation),
             'attention_regularizer_weight': self.attention_regularizer_weight,
         }
         base_config = super(SeqSelfAttention, self).get_config()
@@ -311,7 +312,7 @@ class SeqSelfAttention(keras.layers.Layer):
         return {'SeqSelfAttention': SeqSelfAttention}
 
 
-class SeqWeightedAttention(keras.layers.Layer):
+class SeqWeightedAttention(tf.keras.layers.Layer):
     r"""Y = \text{softmax}(XW + b) X
 
     See: https://arxiv.org/pdf/1708.00524.pdf
@@ -335,11 +336,11 @@ class SeqWeightedAttention(keras.layers.Layer):
     def build(self, input_shape):
         self.W = self.add_weight(shape=(int(input_shape[2]), 1),
                                  name='{}_W'.format(self.name),
-                                 initializer=keras.initializers.get('uniform'))
+                                 initializer=tf.keras.initializers.get('uniform'))
         if self.use_bias:
             self.b = self.add_weight(shape=(1,),
                                      name='{}_b'.format(self.name),
-                                     initializer=keras.initializers.get('zeros'))
+                                     initializer=tf.keras.initializers.get('zeros'))
         super(SeqWeightedAttention, self).build(input_shape)
 
     def call(self, x, mask=None):
