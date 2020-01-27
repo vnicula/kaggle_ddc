@@ -1,4 +1,5 @@
 import argparse
+import gc
 import glob
 
 import numpy as np
@@ -97,6 +98,8 @@ if __name__ == '__main__':
         print(preds)
         predictions.extend(zip(names, preds))
         truths.extend(nplabels)
+        del npsamples, npmasks
+        gc.collect()
 
     print(predictions)
     save_predictions(predictions)

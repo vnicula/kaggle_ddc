@@ -167,7 +167,7 @@ class MesoInception4():
         return func
     
     def init_model(self):
-        x = Input(shape = (IMGWIDTH, IMGWIDTH, 3))
+        x = Input(shape = (256, 256, 3))
         
         x1 = self.InceptionLayer(1, 4, 4, 2)(x)
         x1 = BatchNormalization()(x1)
@@ -494,14 +494,23 @@ def create_model(input_shape, weights):
     input_mask = Input(shape=(input_shape[0]))
     # reshape = Reshape([224, 224, 3])(input_layer)
 
-    feature_extractor = MobileNetV2(include_top=False,
-        weights=weights,
-        # weights='imagenet',
-        alpha=0.5,
-        input_shape=input_shape[-3:],
-        pooling='avg'
-        # pooling=None
-    )
+    classifier = MesoInception4()
+    # print(classifier.model.summary())
+    classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
+    for layer in classifier.model.layers:
+        if layer.name == 'max_pooling2d_3':
+            output = layer.output
+    feature_extractor = Model(inputs=classifier.model.input, outputs=output)
+    print(feature_extractor.summary())
+    
+    # feature_extractor = MobileNetV2(include_top=False,
+    #     weights=weights,
+    #     # weights='imagenet',
+    #     alpha=0.5,
+    #     input_shape=input_shape[-3:],
+    #     pooling='avg'
+    #     # pooling=None
+    # )
 
     # feature_extractor = Xception(include_top=False, 
     #     weights='imagenet', 
@@ -558,7 +567,7 @@ def create_model(input_shape, weights):
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
-    # net = TimeDistributed(Flatten())(net)
+    net = TimeDistributed(Flatten())(net)
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
@@ -648,7 +657,7 @@ if __name__ == '__main__':
 
     num_epochs = 1000
     validation_steps = 32
-    batch_size = 128
+    batch_size = 16 #128
 
     train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(1)
     eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(1)
@@ -677,7 +686,8 @@ if __name__ == '__main__':
     class_weight={0: 0.65, 1: 0.35}
     # class_weight=[0.99, 0.01]
     history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
-        validation_data=eval_dataset, validation_steps=validation_steps, callbacks=callbacks)
+        validation_data=eval_dataset, #validation_steps=validation_steps, 
+        callbacks=callbacks)
     
     model.save('final_model.h5')
     # new_model = tf.keras.models.load_model('my_model')
