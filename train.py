@@ -239,6 +239,7 @@ def rescale_list(input_list, size):
 # TODO oversample REAL
 def read_file(file_path):
     
+    t0 = time.time()
     # names = []
     labels = []
     samples = []
@@ -295,7 +296,7 @@ def read_file(file_path):
     npmasks = np.array(masks, dtype=np.float32)
     nplabels = np.array(labels, dtype=np.int32)
 
-    print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
+    print('file {} Shape samples {}, labels {} took {}'.format(file_path, npsamples.shape, nplabels.shape, time.time()-t0))
     # return tf.data.Dataset.from_tensor_slices((npsamples, npmasks, nplabels))
     return npsamples, npmasks, nplabels
 
@@ -386,8 +387,8 @@ def input_dataset(input_dir, is_training):
             tuple(tf.py_function(read_file, [file_name], [tf.float32, tf.float32, tf.int32]))),
         cycle_length=8,
         block_length=1,
-        sloppy=False,
-        buffer_output_elements=1,
+        sloppy=True,
+        buffer_output_elements=4,
         )
     )
 
@@ -501,7 +502,6 @@ def create_model(input_shape, weights):
         if layer.name == 'max_pooling2d_3':
             output = layer.output
     feature_extractor = Model(inputs=classifier.model.input, outputs=output)
-    print(feature_extractor.summary())
     
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights=weights,
@@ -521,6 +521,7 @@ def create_model(input_shape, weights):
 
     for layer in feature_extractor.layers:
         layer.trainable = False
+    print(feature_extractor.summary())
 
     # for layer in feature_extractor.layers:
     #     if (('block_16' not in layer.name) # and ('block_15' not in layer.name)
@@ -657,9 +658,9 @@ if __name__ == '__main__':
 
     num_epochs = 1000
     validation_steps = 32
-    batch_size = 16 #128
+    batch_size = 64 #128
 
-    train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(1)
+    train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(2)
     eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(1)
 
     callbacks = [
