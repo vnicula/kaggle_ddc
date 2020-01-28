@@ -25,7 +25,7 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
-from multi_head import Encoder, CustomSchedule
+# from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
 # https://github.com/tensorflow/tensorflow/issues/24520
@@ -49,7 +49,7 @@ if gpus:
 SEQ_LEN = 30
 # FEAT_SHAPE = (300,)
 FEAT_SHAPE = (224, 224, 3)
-D_MODEL = 128
+D_MODEL = 784
 
 def save_sample_img(name, label, values):
     IMG_SIZE = values[0].shape[0]    
@@ -450,14 +450,19 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.025)
+    optimizer = tf.keras.optimizers.Adam(lr=0.065) #(lr=0.025)
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
     # TODO keras needs custom_objects when loading models with custom metrics
     # But this one needs the optimizer.
+    # def get_lr_metric(optimizer):
+    #     def lr(y_true, y_pred):
+    #         return optimizer.lr
+    #     return lr
     # lr_metric = get_lr_metric(optimizer)
+
     thresh = 0.5
     METRICS = [
         tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
@@ -489,7 +494,7 @@ def weighted_ce_logits(y_true, y_pred):
 # TODO: explore removal of projection at the end of MobileNet to LSTM
 # TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
 # oh wait its already in TF doc
-def create_model(input_shape, weights):
+def create_model(input_shape):
 
     input_layer = Input(shape=input_shape)
     input_mask = Input(shape=(input_shape[0]))
@@ -502,9 +507,12 @@ def create_model(input_shape, weights):
         if layer.name == 'max_pooling2d_3':
             output = layer.output
     feature_extractor = Model(inputs=classifier.model.input, outputs=output)
-    
+
+    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
+
     # feature_extractor = MobileNetV2(include_top=False,
-    #     weights=weights,
+    #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
     #     # weights='imagenet',
     #     alpha=0.5,
     #     input_shape=input_shape[-3:],
@@ -556,19 +564,20 @@ def create_model(input_shape, weights):
     
     # net = input_layer
     net = TimeDistributed(feature_extractor)(input_layer)
+    net = TimeDistributed(Flatten())(net)
     # net = TimeDistributed(Conv2D(256, (1, 1), strides=(1, 1), padding='valid', activation='relu'))(net)
     # net = TimeDistributed(Conv2D(D_MODEL, (3, 3), strides=(2, 2), padding='valid', activation='relu'))(net)
     # net = TimeDistributed(BatchNormalization())(net)
     # net = TimeDistributed(GlobalMaxPooling2D())(net)
-    # net = Encoder(num_layers=2, d_model=D_MODEL, num_heads=4, dff=512,
+    # net = Encoder(num_layers=1, d_model=D_MODEL, num_heads=2, dff=256,
     #     maximum_position_encoding=1000)(net, mask=input_mask)
     # net = multiply([net, input_mask])
     # net = Masking(mask_value = 0.0)(net)
-    # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
+    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
     # net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
-    net = TimeDistributed(Flatten())(net)
+
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
@@ -584,8 +593,6 @@ def create_model(input_shape, weights):
     # parallel_model = multi_gpu_model(model, cpu_merge=False, gpus=4)
     # parallel_model = multi_gpu_model(model, gpus=2)
     # print("Training using multiple GPUs..")
-
-    compile_model(model)
     
     print(model.summary())
     return model
@@ -646,29 +653,32 @@ if __name__ == '__main__':
     print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
     with strategy.scope():
+        model = create_model(in_shape)
         if args.load is not None:
             print('Loading model and weights from: ', args.load)
-            model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+            # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+            model.load_weights(args.load)
         else:
             print('Training model from scratch.')
-            model = create_model(in_shape,
-                # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
-                'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
-            )
+        compile_model(model)
 
     num_epochs = 1000
     validation_steps = 32
     batch_size = 64 #128
 
+    # Cached for small datasets
+    # train_dataset = train_dataset.shuffle(buffer_size=256).cache().batch(batch_size).prefetch(2)
+    # eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(1)
     train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(2)
     eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(1)
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
-            filepath='mobgru_{epoch}.h5',
+            filepath='fattw_{epoch}.h5',
             save_best_only=True,
             monitor='val_binary_crossentropy',
             # save_format='tf',
+            save_weights_only=True,
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             # Stop training when `val_loss` is no longer improving
@@ -677,7 +687,7 @@ if __name__ == '__main__':
             min_delta=1e-3,
             patience=25,
             verbose=1),
-        tf.keras.callbacks.CSVLogger('mobgru_log.csv'),
+        tf.keras.callbacks.CSVLogger('training_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
         tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
@@ -695,7 +705,7 @@ if __name__ == '__main__':
     # new_model.summary()
 
     save_loss(history)
-
     t1 = time.time()
+
     print("Execution took: {}".format(t1-t0))
 
