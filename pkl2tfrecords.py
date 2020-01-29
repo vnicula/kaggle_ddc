@@ -1,8 +1,11 @@
 import argparse
-
+import cv2
 import glob
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pickle
+import time
 import tqdm
 import tensorflow as tf
 
@@ -14,30 +17,48 @@ MAX_RECORDS = 256
 def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
-
 def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
-
 def _floats_feature(value):
-    return tf.train.Feature(float_list=tf.train.FloatList(value=value.reshape(-1)))
+    return tf.train.Feature(float_list=tf.train.FloatList(value=value.flatten()))
+
+def save_sample_img(name, label, values):
+    IMG_SIZE = values[0].shape[0]    
+
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 4
+    font_scale = 2
+
+    # line_shape = (IMG_SIZE, max_elems*IMG_SIZE, 3)
+    tile_shape = (IMG_SIZE, SEQ_LEN*IMG_SIZE, 3)
+    tile_img = np.zeros(tile_shape, dtype=np.float32)
+    for j in range(len(values)):
+        color = (0, 255, 0) if label == 0 else (255, 0, 0)
+        cv2.putText(tile_img, name, (10, 50),
+                        font_face, font_scale,
+                        color, thickness, 2)
+        
+        tile_img[:, j*IMG_SIZE:(j+1)*IMG_SIZE, :] = values[j]
+
+    plt.imsave(name+'.jpg', tile_img)
+
+    return tile_img
 
 
 def get_numpys(pkl_file):
 
     names = []
-    labels = []
     samples = []
     masks = []
+    labels = []
 
     with open(pkl_file, 'rb') as f_p:
         data = pickle.load(f_p)
-        print('Loaded {}.'.format(file_path))
+        print('Loaded {}.'.format(pkl_file))
 
         for key in data.keys():
             label = data[key][0]
-            # names.append(key)
-            # sample = data[key][1][0]
 
             feat_shape = FEAT_SHAPE
             my_seq_len = len(data[key][1])
@@ -46,8 +67,7 @@ def get_numpys(pkl_file):
             sample_f = np.zeros((SEQ_LEN,) + feat_shape, dtype=np.float32)
             mask = np.zeros(SEQ_LEN, dtype=np.float32)
             for indx in range(data_seq_len):
-                sample[indx] = data[key][1][indx].astype(
-                    np.float32) / 127.5 - 1.0
+                sample[indx] = data[key][1][indx].astype(np.float32) / 127.5 - 1.0
                 if label == 0:
                     sample_f[indx] = np.fliplr(sample[indx])
                 mask[indx] = 1.0
@@ -71,29 +91,26 @@ def get_numpys(pkl_file):
     return names, samples, masks, labels
 
 
-def save_numpy_to_tfrecords(samples, masks, labels, names, destination_path, name):
-    """Converts an entire dataset into x tfrecords where x=videos/fragmentSize.
+def save_numpy_to_tfrecords(names, samples, masks, labels, filename):
+    """Converts numpys into tfrecords.
     """
 
     num_videos = len(samples)
-
-    writer = None
+    assert num_videos < MAX_RECORDS+1
     feature = {}
-
-    filename = os.path.join(destination_path,
-                            name + str(current_batch_number) + '_of_' + str(
-                                total_batch_number) + '.tfrecords')
     print('Writing', filename)
-    writer = tf.python_io.TFRecordWriter(filename)
+    writer = tf.io.TFRecordWriter(filename)
 
-    for video_count in range((num_videos)):
+    for i in tqdm.tqdm(range(num_videos)):
 
-        sample = samples[video_count]
-        mask = masks[video_count]
-        label = labels[video_count]
-        name = names[video_count]
+        sample = samples[i]
+        mask = masks[i]
+        label = labels[i]
+        name = names[i].encode()
+        assert sample.shape == (SEQ_LEN, ) + FEAT_SHAPE
+        assert mask.shape == (SEQ_LEN, )
 
-        feature['sample'] = _floats_feature(images)
+        feature['sample'] = _floats_feature(sample)
         feature['mask'] = _floats_feature(mask)
         feature['label'] = _int64_feature(label)
         feature['name'] = _bytes_feature(name)
@@ -117,7 +134,8 @@ if __name__ == '__main__':
     print(pkl_file_list)
 
     names, samples, masks, labels = [], [], [], []
-    for pkl_file in tqdm(pkl_file_list):
+    records_batch = 0
+    for pkl_file in tqdm.tqdm(pkl_file_list):
         name, sample, mask, label = get_numpys(pkl_file)
         names.extend(name)
         samples.extend(sample)
@@ -125,5 +143,22 @@ if __name__ == '__main__':
         labels.extend(label)
 
         if len(samples) >= MAX_RECORDS:
-            save_numpy_to_tfrecords(samples[:MAX_RECORDS], masks[:MAX_RECORDS, labels[:MAX_RECORDS], names[:MAX_RECORDS],
-            TODO)
+            folder = os.path.dirname(pkl_file)
+            folder_index = folder.split('_')[-1]
+            tf_file = os.path.join(folder, folder_index + '_%d.tfrecord'%records_batch)
+            records_batch += 1
+            save_numpy_to_tfrecords(names[:MAX_RECORDS], samples[:MAX_RECORDS], masks[:MAX_RECORDS], 
+                labels[:MAX_RECORDS], tf_file)
+            names = names[MAX_RECORDS:]
+            samples = samples[MAX_RECORDS:]
+            masks = masks[MAX_RECORDS:]
+            labels = labels[MAX_RECORDS:]
+
+    if len(names) > 0:
+        folder = os.path.dirname(pkl_file)
+        folder_index = folder.split('_')[-1]
+        tf_file = os.path.join(folder, folder_index + '_%d'%records_batch)
+        save_numpy_to_tfrecords(names, samples, masks, labels, tf_file)
+
+    t1 = time.time()
+    print("Execution took: {}".format(t1-t0))

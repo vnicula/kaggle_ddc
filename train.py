@@ -356,6 +356,27 @@ def fake_read_file(file_path):
 
 #     return dataset
 
+# TODO
+# def tfrecords_dataset(input_dir, is_training):
+#     print('Using tfrecords dataset from: ', input_dir)
+
+#     dataset = tf.data.TfRecordDataset.list_files(input_dir).shuffle(1024)
+    
+#     dataset = dataset.map(
+#         map_function_wrapper,
+#         num_parallel_calls=8
+#     ).prefetch(4)
+#     dataset = dataset.interleave(
+#         # lambda *x: tf.data.Dataset.from_tensor_slices(x).map(
+#         lambda x: x.map(
+#             lambda s, m, l: ({'input_1': tf.reshape(s, (-1,)+FEAT_SHAPE), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1]))
+#         ),
+#         cycle_length=16,
+#         num_parallel_calls=16
+#     )
+
+#     return dataset
+
 
 def input_dataset(input_dir, is_training):
     print('Using dataset from: ', input_dir)
