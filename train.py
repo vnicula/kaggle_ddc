@@ -357,25 +357,26 @@ def fake_read_file(file_path):
 #     return dataset
 
 # TODO
-# def tfrecords_dataset(input_dir, is_training):
-#     print('Using tfrecords dataset from: ', input_dir)
-
-#     dataset = tf.data.TfRecordDataset.list_files(input_dir).shuffle(1024)
+def tfrecords_dataset(input_dir, is_training):
+    print('Using tfrecords dataset from: ', input_dir)
     
-#     dataset = dataset.map(
-#         map_function_wrapper,
-#         num_parallel_calls=8
-#     ).prefetch(4)
-#     dataset = dataset.interleave(
-#         # lambda *x: tf.data.Dataset.from_tensor_slices(x).map(
-#         lambda x: x.map(
-#             lambda s, m, l: ({'input_1': tf.reshape(s, (-1,)+FEAT_SHAPE), 'input_2': tf.reshape(m, [-1])}, tf.reshape(l, [-1]))
-#         ),
-#         cycle_length=16,
-#         num_parallel_calls=16
-#     )
+    file_list = tf.data.Dataset.list_files(input_dir).shuffle(512)
+    dataset = tf.data.TFRecordDataset(filenames=file_list, buffer_size=None, num_parallel_reads=24)
 
-#     return dataset
+    feature_description = {
+        'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
+        'name': tf.io.FixedLenFeature([], tf.string, default_value=''),
+        'sample': tf.io.FixedLenFeature([30, 224, 224, 3], tf.float32),
+        'mask': tf.io.FixedLenFeature([30], tf.float32),
+    }
+
+    def _parse_function(example_proto):
+        example = tf.io.parse_single_example(example_proto, feature_description)
+        return {'input_1': example['sample'], 'input_2': example['mask']}, example['label']
+
+    dataset = dataset.map(map_func=_parse_function, num_parallel_calls=16)
+
+    return dataset
 
 
 def input_dataset(input_dir, is_training):
@@ -471,7 +472,7 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.065) #(lr=0.025)
+    optimizer = tf.keras.optimizers.Adam(lr=0.05) #(lr=0.025)
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -652,8 +653,10 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str, default=None)
     args = parser.parse_args()
 
-    train_dataset = input_dataset(args.train_dir, is_training=True)
-    eval_dataset = input_dataset(args.eval_dir, is_training=False)
+    # train_dataset = input_dataset(args.train_dir, is_training=True)
+    # eval_dataset = input_dataset(args.eval_dir, is_training=False)
+    train_dataset = tfrecords_dataset(args.train_dir, is_training=True)
+    eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
  
     # elem = dataset.make_one_shot_iterator().get_next()
     # with tf.Session() as session:
@@ -684,14 +687,14 @@ if __name__ == '__main__':
         compile_model(model)
 
     num_epochs = 1000
-    validation_steps = 32
-    batch_size = 64 #128
+    # validation_steps = 32
+    batch_size = 64
 
     # Cached for small datasets
     # train_dataset = train_dataset.shuffle(buffer_size=256).cache().batch(batch_size).prefetch(2)
     # eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(1)
-    train_dataset = train_dataset.shuffle(buffer_size=256).batch(batch_size).prefetch(2)
-    eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).batch(batch_size).prefetch(1)
+    train_dataset = train_dataset.batch(batch_size).prefetch(4)
+    eval_dataset = eval_dataset.batch(batch_size).prefetch(4)
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
@@ -705,14 +708,14 @@ if __name__ == '__main__':
             # Stop training when `val_loss` is no longer improving
             # monitor='val_loss', # watch out for reg losses
             monitor='val_binary_crossentropy',
-            min_delta=1e-3,
-            patience=25,
+            min_delta=1e-4,
+            patience=50,
             verbose=1),
         tf.keras.callbacks.CSVLogger('training_log.csv'),
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
         tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-            factor=0.9, patience=2, min_lr=1e-5, verbose=1, mode='min')
+            factor=0.95, patience=2, min_lr=1e-5, verbose=1, mode='min')
     ]
     
     class_weight={0: 0.65, 1: 0.35}
