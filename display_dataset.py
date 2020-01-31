@@ -14,8 +14,8 @@ gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
   # Restrict TensorFlow to only use the first GPU
   try:
-    tf.config.experimental.set_visible_devices(gpus[3], 'GPU')
-    tf.config.experimental.set_memory_growth(gpus[3], True)
+    tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
+    tf.config.experimental.set_memory_growth(gpus[0], True)
     logical_gpus = tf.config.experimental.list_logical_devices('GPU')
     print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
   except RuntimeError as e:
@@ -25,7 +25,7 @@ if gpus:
 
 def tile_image(keys, values, masks=None):
     """
-    values it's a tuple of (label, sample)
+    value it's a tuple of (label, sample)
     """
     max_elems = 0
     for val in values:
@@ -48,8 +48,8 @@ def tile_image(keys, values, masks=None):
             val_img[:, i*IMG_SIZE:(i+1)*IMG_SIZE, :] = v
             if masks is not None:
                 mask_color = (255, 255, 0) if masks[j][i] > 0 else (0, 255, 255)
-                cv2.putText(val_img, str(masks[i][j]), (10, i*IMG_SIZE+200),
-                            font_face, font_scale * 2,
+                cv2.putText(val_img, str(masks[j][i]), (i*IMG_SIZE+180, 60),
+                            font_face, font_scale,
                             mask_color, thickness, 2)
         color = (0, 255, 0) if val[0] == 0 else (255, 0, 0)
         cv2.putText(val_img, str(keys[j])+'=>'+str(val[0]), (10, 50),
@@ -112,7 +112,7 @@ def display_tfrecord(rec_file):
     for start in np.arange(0, len(keys), NUM_ROWS):
         bkeys = keys[start:start+NUM_ROWS]
         values = tuple(zip(labels[start:start+NUM_ROWS], samples[start:start+NUM_ROWS]))
-        tile_img = tile_image(bkeys, values, masks)
+        tile_img = tile_image(bkeys, values, masks[start:start+NUM_ROWS])
 
         plt.figure(figsize=(20, 10))
         plt.imshow(tile_img)
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     filename, file_extension = os.path.splitext(args.data)
     if "pkl" in file_extension:
         display_pkl(args.data)
-    elif "tfrecord" in file_extension:
+    elif "tfrec" in file_extension:
         display_tfrecord(args.data)
     else:
         print("Only pkl and tfrecord.")

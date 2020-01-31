@@ -1,9 +1,3 @@
-# ---------------------------------------------------------
-# IOU Tracker
-# Copyright (c) 2017 TU Berlin, Communication Systems Group
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Erik Bochinski
-# ---------------------------------------------------------
 
 def iou(bbox1, bbox2):
     """
@@ -70,15 +64,22 @@ def track_iou(detections, sigma_l, sigma_h, sigma_iou, t_min):
         for track in tracks_active:
             if len(dets) > 0:
                 # get det with highest iou
-                best_match = max(dets, key=lambda x: iou(track['bboxes'][-1], x['bbox']))
-                if iou(track['bboxes'][-1], best_match['bbox']) >= sigma_iou:
+                best_match_index = 0
+                best_iou = 0
+                for i, det in enumerate(dets):
+                    candidate_iou = iou(track['bboxes'][-1], det['bbox'])
+                    if candidate_iou > best_iou:
+                        best_match_index = i
+                        best_iou = candidate_iou
+                if best_iou >= sigma_iou:
+                    best_match = dets[best_match_index]
                     track['bboxes'].append(best_match['bbox'])
                     track['max_score'] = max(track['max_score'], best_match['score'])
 
                     updated_tracks.append(track)
-
+                    # print('best match: ', best_match)
                     # remove from best matching detection from detections
-                    del dets[dets.index(best_match)]
+                    del dets[best_match_index]
 
             # if track was not updated
             if len(updated_tracks) == 0 or track is not updated_tracks[-1]:
