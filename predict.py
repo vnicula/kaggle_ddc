@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 
 
 SEQ_LEN = 30
-
+FEAT_SHAPE = (224, 224, 3)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -54,7 +54,7 @@ def read_file(file_path):
             data_seq_len = min(my_seq_len, SEQ_LEN)
             sample = np.zeros((SEQ_LEN,) + feat_shape, dtype=np.float32)
             # mask = np.zeros(SEQ_LEN, dtype=np.float32)
-            mask = np.zeros(SEQ_LEN, dtype=np.int32)
+            mask = np.zeros(SEQ_LEN, dtype=np.float32)
             for indx in range(data_seq_len):
                 sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
                 mask[indx] = 1.0
@@ -71,7 +71,7 @@ def read_file(file_path):
         del data
     # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
     npsamples = np.array(samples, dtype=np.float32)
-    npmasks = np.array(masks, dtype=np.int32)
+    npmasks = np.array(masks, dtype=np.float32)
     nplabels = np.array(labels, dtype=np.int32)
 
     print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
@@ -210,11 +210,15 @@ if __name__ == '__main__':
     if args.model is not None:
         model = tf.keras.models.load_model(args.model, custom_objects=custom_objs)
     elif args.weights is not None:
-        model = create_model((30, 224, 224, 3))
-        model.load_weights(args.weights, custom_objects=custom_objs)
-        compile_model(model)
-        model_file, _ = os.path.splitext(args.weights)
-        model.save(model_file + '.h5')
+        strategy = tf.distribute.MirroredStrategy()
+        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+        with strategy.scope():
+            model = create_model((SEQ_LEN,) + FEAT_SHAPE)
+            model.load_weights(args.weights)
+            compile_model(model)
+            model_file, _ = os.path.splitext(args.weights)
+        # model.save(model_file + '_saved_model.h5')
+    
     print(model.summary())
 
     # TODO use tf model maybe as it can be retrained
@@ -226,18 +230,20 @@ if __name__ == '__main__':
 
     predictions = []
     truths = []
+    saved = []
     pkl_files = glob.glob(args.pkl)
     for pkl_file in pkl_files:
         print('Predicting on samples from {}'.format(pkl_file))
         names, npsamples, npmasks, nplabels = read_file(pkl_file)
-        preds = model.predict([npsamples, npmasks], verbose=1, batch_size=16)
+        preds = model.predict([npsamples, npmasks], verbose=1, batch_size=8)
         print(preds)
-        predictions.extend(zip(names, preds))
+        predictions.extend(preds)
+        saved.extend(zip(names, preds))
         truths.extend(nplabels)
         del npsamples, npmasks
         gc.collect()
 
-    print('Log loss on predictions: {}'.format(log_loss(truths, predictions)))
-    save_predictions(predictions)
+    print('Log loss on predictions: {}'.format(log_loss(truths, predictions, labels=[0, 1])))
+    save_predictions(saved)
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
