@@ -56,7 +56,9 @@ def read_file(file_path):
             # mask = np.zeros(SEQ_LEN, dtype=np.float32)
             mask = np.zeros(SEQ_LEN, dtype=np.float32)
             for indx in range(data_seq_len):
+                # NOTE mesonet seems to work with [0, 1]
                 sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
+                # sample[indx] = data[key][1][indx].astype(np.float32) / 255.0
                 mask[indx] = 1.0
             
             # print(file_path, len(samples))
@@ -217,7 +219,7 @@ if __name__ == '__main__':
             model.load_weights(args.weights)
             compile_model(model)
             model_file, _ = os.path.splitext(args.weights)
-        # model.save(model_file + '_saved_model.h5')
+        model.save(model_file + '_saved_model.h5')
     
     print(model.summary())
 
@@ -242,8 +244,10 @@ if __name__ == '__main__':
         truths.extend(nplabels)
         del npsamples, npmasks
         gc.collect()
-
-    print('Log loss on predictions: {}'.format(log_loss(truths, predictions, labels=[0, 1])))
-    save_predictions(saved)
+    if len(predictions) > 0:
+        print('Log loss on predictions: {}'.format(log_loss(truths, predictions, labels=[0, 1])))
+        save_predictions(saved)
+    else:
+        print('No predictions, check input.')
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
