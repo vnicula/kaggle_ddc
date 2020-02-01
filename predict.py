@@ -8,6 +8,7 @@ import pickle
 from sklearn.metrics import log_loss
 import time
 import tensorflow as tf
+import tqdm
 from keras_utils import SeqWeightedAttention
 
 from tensorflow.keras.models import load_model, Model
@@ -234,11 +235,11 @@ if __name__ == '__main__':
     truths = []
     saved = []
     pkl_files = glob.glob(args.pkl)
-    for pkl_file in pkl_files:
+    for pkl_file in tqdm.tqdm(pkl_files):
         print('Predicting on samples from {}'.format(pkl_file))
         names, npsamples, npmasks, nplabels = read_file(pkl_file)
         preds = model.predict([npsamples, npmasks], verbose=1, batch_size=8)
-        print(preds)
+        # print(preds)
         predictions.extend(preds)
         saved.extend(zip(names, preds))
         truths.extend(nplabels)

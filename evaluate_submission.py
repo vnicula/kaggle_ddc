@@ -16,8 +16,8 @@ def compute_clip_range(truths, preds):
 
     best_range = (0.0, 1.0)
     best_loss = log_loss(truths, preds)
-    for a_min in np.linspace(0.0, 0.49, 50):
-        for a_max in np.linspace(1.0, 0.51, 50):
+    for a_min in np.linspace(0.0, 0.99, 50):
+        for a_max in np.linspace(a_min, 1.0, 50):
             clip_preds = np.clip(preds, a_min, a_max)
             lloss = log_loss(truths, clip_preds)
             if lloss < best_loss:
