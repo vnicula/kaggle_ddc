@@ -89,7 +89,7 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
     return imgs, imrs, img_scale
 
 
-def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale, face_size):
+def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale, face_size, keep_tracks):
     faces = []
     detections = []
 
@@ -112,8 +112,8 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         return faces
 
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
-    print(tracks)
-    for track in tracks[:2]:
+    # print(tracks)
+    for track in tracks[:keep_tracks]:
         track_faces = []
         for i, bbox in enumerate(track['bboxes']):
             original = originals[track['start_frame'] + i - 1]
@@ -131,13 +131,13 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     return faces
 
 
-def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_count, face_size):
+def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_count, face_size, keep_tracks):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
     imgs, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, TRAIN_FPS)
     parsing = time.time() - start
     # faces = detect_facenet_pytorch(detector, imgs, 256)
-    faces = detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size)
+    faces = detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size, keep_tracks)
     # print('faces: ', faces)
     detection = time.time() - start - parsing
     print('parsing: %.3f scale %f, detection: %.3f seconds' %(parsing, img_scale, detection))
@@ -217,12 +217,13 @@ def save_numpy_to_tfrecords(names, samples, masks, labels, filename):
         writer.close()
 
 
-def run(input_dir, slice_size, already_processed, first_slice):
+def run(input_dir, slice_size, first_slice, keep_tracks):
 
     f_list = os.listdir(input_dir)
     slice_prefix = os.path.basename(input_dir).split('_')[-1]
     dataset_slice = {}
     slices = first_slice
+
     with open(os.path.join(input_dir, META_DATA)) as json_file:
         label_data = json.load(json_file)
 
@@ -231,10 +232,6 @@ def run(input_dir, slice_size, already_processed, first_slice):
         # Parse video
         f_path = os.path.join(input_dir, f_name)
         file_name = os.path.basename(f_path)
-        
-        if file_name in already_processed:
-            print('Skipping already processed {}'.format(file_name))
-            continue
         
         print('Now processing: ' + f_path)
         suffix = f_path.split('.')[-1]
@@ -245,7 +242,7 @@ def run(input_dir, slice_size, already_processed, first_slice):
             # label = 0
 
             faces = extract_one_sample_bbox(f_path, label, max_detection_size=MAX_DETECTION_SIZE, 
-                max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
+                max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE, keep_tracks=keep_tracks)
             if len(faces) > 0:
                 for findex, face in enumerate(faces, start=1):
                     dataset_slice[str(findex) + file_name] = (label, face)
@@ -272,21 +269,6 @@ def run(input_dir, slice_size, already_processed, first_slice):
 
     return slices-first_slice
 
-def get_processed_keys(input_dir):
-    processed_files = set()
-    f_list = os.listdir(input_dir)
-    dataset_files = [fn for fn in f_list if fn.endswith('pkl')]
-    last_slice = 0
-    for data_file in dataset_files:
-        suffix = int(data_file.split('_')[-1].split('.')[0])
-        if suffix > last_slice:
-            last_slice = suffix
-        with open(os.path.join(input_dir, data_file), 'rb') as f_p:
-            data = pickle.load(f_p)
-            processed_files |= data.keys()
-    
-    return processed_files, last_slice
-
 
 #TODO: detect on larger image up to original size
 #return larger face area with larger margin
@@ -309,9 +291,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', type=str)
     args = parser.parse_args()
 
-    already_processed, last_slice = get_processed_keys(args.input_dir)
-    # print(already_processed, last_slice)
-    run(args.input_dir, 128, already_processed, last_slice+1)
+    run(args.input_dir, slice_size=256, first_slice=0, keep_tracks=1)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))

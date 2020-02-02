@@ -117,6 +117,7 @@ def display_tfrecord(rec_file):
         plt.figure(figsize=(20, 10))
         plt.imshow(tile_img)
         plt.savefig(os.path.basename(rec_file)+'_%d.png'%(start//NUM_ROWS))
+        plt.close()
 
 
 if __name__ == '__main__':

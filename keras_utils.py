@@ -374,3 +374,133 @@ class SeqWeightedAttention(tf.keras.layers.Layer):
     @staticmethod
     def get_custom_objects():
         return {'SeqWeightedAttention': SeqWeightedAttention}
+
+
+def binary_focal_loss(gamma=2., alpha=.25):
+    """
+    Binary form of focal loss.
+      FL(p_t) = -alpha * (1 - p_t)**gamma * log(p_t)
+      where p = sigmoid(x), p_t = p or 1 - p depending on if the label is 1 or 0, respectively.
+    References:
+        https://arxiv.org/pdf/1708.02002.pdf
+    Usage:
+     model.compile(loss=[binary_focal_loss(alpha=.25, gamma=2)], metrics=["accuracy"], optimizer=adam)
+    """
+    def binary_focal_loss_fixed(y_true, y_pred):
+        """
+        :param y_true: A tensor of the same shape as `y_pred`
+        :param y_pred:  A tensor resulting from a sigmoid
+        :return: Output tensor.
+        """
+        pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+        pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+
+        epsilon = K.epsilon()
+        # clip to prevent NaN's and Inf's
+        pt_1 = K.clip(pt_1, epsilon, 1. - epsilon)
+        pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
+
+        return -K.mean(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) \
+               -K.mean((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+
+    return binary_focal_loss_fixed
+
+
+def categorical_focal_loss(gamma=2., alpha=.25):
+    """
+    Softmax version of focal loss.
+           m
+      FL = ∑  -alpha * (1 - p_o,c)^gamma * y_o,c * log(p_o,c)
+          c=1
+      where m = number of classes, c = class and o = observation
+    Parameters:
+      alpha -- the same as weighing factor in balanced cross entropy
+      gamma -- focusing parameter for modulating factor (1-p)
+    Default value:
+      gamma -- 2.0 as mentioned in the paper
+      alpha -- 0.25 as mentioned in the paper
+    References:
+        Official paper: https://arxiv.org/pdf/1708.02002.pdf
+        https://www.tensorflow.org/api_docs/python/tf/keras/backend/categorical_crossentropy
+    Usage:
+     model.compile(loss=[categorical_focal_loss(alpha=.25, gamma=2)], metrics=["accuracy"], optimizer=adam)
+    """
+    def categorical_focal_loss_fixed(y_true, y_pred):
+        """
+        :param y_true: A tensor of the same shape as `y_pred`
+        :param y_pred: A tensor resulting from a softmax
+        :return: Output tensor.
+        """
+
+        # Scale predictions so that the class probas of each sample sum to 1
+        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+
+        # Clip the prediction value to prevent NaN's and Inf's
+        epsilon = K.epsilon()
+        y_pred = K.clip(y_pred, epsilon, 1. - epsilon)
+
+        # Calculate Cross Entropy
+        cross_entropy = -y_true * K.log(y_pred)
+
+        # Calculate Focal Loss
+        loss = alpha * K.pow(1 - y_pred, gamma) * cross_entropy
+
+        # Sum the losses in mini_batch
+        return K.sum(loss, axis=1)
+
+    return categorical_focal_loss_fixed
+
+class LRFinder(tf.keras.callbacks.Callback):
+    """Callback that exponentially adjusts the learning rate after each training batch between start_lr and
+    end_lr for a maximum number of batches: max_step. The loss and learning rate are recorded at each step allowing
+    visually finding a good learning rate as per https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html via
+    the plot method.
+    """
+
+    def __init__(self, start_lr: float = 1e-7, end_lr: float = 10, max_steps: int = 100, smoothing=0.9):
+        super(LRFinder, self).__init__()
+        self.start_lr, self.end_lr = start_lr, end_lr
+        self.max_steps = max_steps
+        self.smoothing = smoothing
+        self.step, self.best_loss, self.avg_loss, self.lr = 0, 0, 0, 0
+        self.lrs, self.losses = [], []
+
+    def on_train_begin(self, logs=None):
+        self.step, self.best_loss, self.avg_loss, self.lr = 0, 0, 0, 0
+        self.lrs, self.losses = [], []
+
+    def on_train_batch_begin(self, batch, logs=None):
+        self.lr = self.exp_annealing(self.step)
+        tf.keras.backend.set_value(self.model.optimizer.lr, self.lr)
+
+    def on_train_batch_end(self, batch, logs=None):
+        logs = logs or {}
+        loss = logs.get('loss')
+        step = self.step
+        if loss:
+            self.avg_loss = self.smoothing * self.avg_loss + (1 - self.smoothing) * loss
+            smooth_loss = self.avg_loss / (1 - self.smoothing ** (self.step + 1))
+            self.losses.append(smooth_loss)
+            self.lrs.append(self.lr)
+
+            if step == 0 or loss < self.best_loss:
+                self.best_loss = loss
+
+            if smooth_loss > 4 * self.best_loss or tf.math.is_nan(smooth_loss):
+                self.model.stop_training = True
+
+        if step == self.max_steps:
+            self.model.stop_training = True
+
+        self.step += 1
+
+    def exp_annealing(self, step):
+        return self.start_lr * (self.end_lr / self.start_lr) ** (step * 1. / self.max_steps)
+
+    # def plot(self):
+    #     fig, ax = plt.subplots(1, 1)
+    #     ax.set_ylabel('Loss')
+    #     ax.set_xlabel('Learning Rate (log scale)')
+    #     ax.set_xscale('log')
+    #     ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.0e'))
+    #     ax.plot(self.lrs, self.losses)

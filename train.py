@@ -24,7 +24,7 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 from tensorflow.keras.utils import multi_gpu_model
 
-from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention
+from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention, binary_focal_loss
 # from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
@@ -361,7 +361,7 @@ def tfrecords_dataset(input_dir, is_training):
     print('Using tfrecords dataset from: ', input_dir)
     
     file_list = tf.data.Dataset.list_files(input_dir).shuffle(512)
-    dataset = tf.data.TFRecordDataset(filenames=file_list, buffer_size=None, num_parallel_reads=24)
+    dataset = tf.data.TFRecordDataset(filenames=file_list, buffer_size=None, num_parallel_reads=40)
 
     feature_description = {
         'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
@@ -372,7 +372,8 @@ def tfrecords_dataset(input_dir, is_training):
 
     def _parse_function(example_proto):
         example = tf.io.parse_single_example(example_proto, feature_description)
-        return {'input_1': example['sample'], 'input_2': example['mask']}, example['label']
+        sample = (example['sample'] + 1.0) / 2
+        return {'input_1': sample, 'input_2': example['mask']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=16)
 
@@ -501,7 +502,8 @@ def compile_model(model):
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
+    # my_loss = binary_focal_loss()
     # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
     # print(parallel_model.summary())
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -605,7 +607,7 @@ def create_model(input_shape):
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = Dropout(0.25)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002),
         bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
     # out = Dense(1, activation='sigmoid')(net)
 
@@ -715,7 +717,7 @@ if __name__ == '__main__':
         # tf.keras.callbacks.LearningRateScheduler(step_decay),
         # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
         tf.keras.callbacks.ReduceLROnPlateau(monitor='val_binary_crossentropy', 
-            factor=0.95, patience=2, min_lr=1e-5, verbose=1, mode='min')
+            factor=0.95, patience=1, min_lr=5e-6, verbose=1, mode='min')
     ]
     
     class_weight={0: 0.65, 1: 0.35}
