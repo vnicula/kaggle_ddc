@@ -1,34 +1,23 @@
 import argparse
+import constants
 import cv2
 from facenet_pytorch import MTCNN
 import json
-import iou_tracker
 import math
 import numpy as np
 from matplotlib import pyplot as plt
-from PIL import Image
 import os
 import pickle
+import process_utils
 import tensorflow as tf
 import time
 import torch
 import tqdm
 
-META_DATA = "metadata.json"
-MARGIN = 16
-MAX_DETECTION_SIZE = 960
-TRAIN_FACE_SIZE = 224
-TRAIN_FRAME_COUNT = 32
-TRAIN_FPS = 3
-# SKIP_INITIAL_SEC = 8
-SKIP_INITIAL_SEC = 0
-
-SEQ_LEN = 30
-FEAT_SHAPE = (224, 224, 3)
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
-detector = MTCNN(device=device, margin=MARGIN, min_face_size=20, post_process=False, keep_all=False, select_largest=False)
+detector = MTCNN(device=device, margin=constants.MARGIN, min_face_size=20, post_process=False, keep_all=False, select_largest=False)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -43,105 +32,19 @@ if gpus:
     print(e)
 
 
-def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
-    vidcap = cv2.VideoCapture(video_path)
-    frame_num = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = vidcap.get(cv2.CAP_PROP_FPS)
-    width = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)) # float
-    height = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # float
-    print('cv2.FRAME_COUNT {}, cv2.PROP_FPS {}, cv2.FRAME_WIDTH {}, cv2.FRAME_HEIGHT {}'.format(frame_num, fps, width, height))
-    
-    skip_n = max(math.floor(fps / sample_fps), 0)
-    max_dimension = max(width, height)
-    img_scale = 1.0
-    if max_dimension > max_detection_size:
-        img_scale = max_detection_size / max_dimension
-    print('Skipping %1.1f frames, scaling: %1.4f' % (skip_n, img_scale))
-
-    imrs = []
-    imgs = []
-    count = 0
-
-    #TODO make this robust to video reading errors
-    for i in range(frame_num):
-        success = vidcap.grab()
-            
-        if success:
-            if i < SKIP_INITIAL_SEC * fps:
-                continue
-            if i % (skip_n+1) == 0:
-                success, im = vidcap.retrieve()
-                if success:
-                    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-                    if img_scale < 1.0:
-                        imr = cv2.resize(im, (int(im.shape[1] * img_scale), int(im.shape[0] * img_scale)))
-                    else:
-                        imr = im
-                    imgs.append(im)
-                    imrs.append(imr)
-                    count += 1
-                    if count >= max_frame_count:
-                        break
-        else:
-            break
-
-    vidcap.release()
-    return imgs, imrs, img_scale
-
-
-def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale, face_size, keep_tracks):
-    faces = []
-    detections = []
-
-    for lb in np.arange(0, len(images), batch_size):
-        imgs_pil = [Image.fromarray(image) for image in images[lb:lb+batch_size]]
-        frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
-        if (frames_boxes is not None) and (len(frames_boxes) > 0):
-            print(frames_boxes, frames_confidences)
-            for i in range(len(frames_boxes)):
-                if frames_boxes[i] is not None:
-                    boxes = []
-                    for box, confidence in zip(frames_boxes[i], frames_confidences[i]):
-                        boxes.append({'bbox': box, 'score':confidence})
-                    detections.append(boxes)
-    
-    tracks = iou_tracker.track_iou(detections, 0.8, 0.9, 0.1, 10)
-
-    # Can't use anything since it's multitrack fake
-    if label == 1 and len(tracks) > 1:
-        return faces
-
-    tracks.sort(key = lambda x:x['max_score'], reverse=True)
-    # print(tracks)
-    for track in tracks[:keep_tracks]:
-        track_faces = []
-        for i, bbox in enumerate(track['bboxes']):
-            original = originals[track['start_frame'] + i - 1]
-            (x,y,w,h) = (
-                max(int(bbox[0] / img_scale) - MARGIN, 0),
-                max(int(bbox[1] / img_scale) - MARGIN, 0),
-                int((bbox[2]-bbox[0]) / img_scale) + 2*MARGIN,
-                int((bbox[3]-bbox[1]) / img_scale) + 2*MARGIN
-            )
-            face_extract = original[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
-            face_extract = cv2.resize(face_extract, (face_size, face_size))
-            track_faces.append(face_extract)
-        faces.append(track_faces)
-
-    return faces
-
-
 def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_count, face_size, keep_tracks):
     """Returns a 4d numpy with the face sequence"""
     start = time.time()
-    imgs, imrs, img_scale = parse_vid(video_path, max_detection_size, max_frame_count, TRAIN_FPS)
+    imgs, imrs, img_scale = process_utils.parse_vid(video_path, max_detection_size, 
+        max_frame_count, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
     parsing = time.time() - start
     # faces = detect_facenet_pytorch(detector, imgs, 256)
-    faces = detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size, keep_tracks)
+    faces, _ = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size, keep_tracks)
     # print('faces: ', faces)
     detection = time.time() - start - parsing
     print('parsing: %.3f scale %f, detection: %.3f seconds' %(parsing, img_scale, detection))
     return faces
+
 
 def get_numpys(data):
 
@@ -154,10 +57,10 @@ def get_numpys(data):
         label = data[key][0]
 
         my_seq_len = len(data[key][1])
-        data_seq_len = min(my_seq_len, SEQ_LEN)
-        sample = np.zeros((SEQ_LEN,) + FEAT_SHAPE, dtype=np.float32)
-        sample_f = np.zeros((SEQ_LEN,) + FEAT_SHAPE, dtype=np.float32)
-        mask = np.zeros(SEQ_LEN, dtype=np.float32)
+        data_seq_len = min(my_seq_len, constants.SEQ_LEN)
+        sample = np.zeros((constants.SEQ_LEN,) + constants.FEAT_SHAPE, dtype=np.float32)
+        sample_f = np.zeros((constants.SEQ_LEN,) + constants.FEAT_SHAPE, dtype=np.float32)
+        mask = np.zeros(constants.SEQ_LEN, dtype=np.float32)
         for indx in range(data_seq_len):
             sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
             if label == 0:
@@ -202,8 +105,8 @@ def save_numpy_to_tfrecords(names, samples, masks, labels, filename):
         mask = masks[i]
         label = labels[i]
         name = names[i].encode()
-        assert sample.shape == (SEQ_LEN, ) + FEAT_SHAPE
-        assert mask.shape == (SEQ_LEN, )
+        assert sample.shape == (constants.SEQ_LEN, ) + constants.FEAT_SHAPE
+        assert mask.shape == (constants.SEQ_LEN, )
 
         feature['sample'] = _floats_feature(sample)
         feature['mask'] = _floats_feature(mask)
@@ -224,7 +127,7 @@ def run(input_dir, slice_size, first_slice, keep_tracks):
     dataset_slice = {}
     slices = first_slice
 
-    with open(os.path.join(input_dir, META_DATA)) as json_file:
+    with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
         label_data = json.load(json_file)
 
     for i in tqdm.tqdm(range(len(f_list))):
@@ -241,8 +144,8 @@ def run(input_dir, slice_size, first_slice, keep_tracks):
             label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
             # label = 0
 
-            faces = extract_one_sample_bbox(f_path, label, max_detection_size=MAX_DETECTION_SIZE, 
-                max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE, keep_tracks=keep_tracks)
+            faces = extract_one_sample_bbox(f_path, label, max_detection_size=constants.MAX_DETECTION_SIZE, 
+                max_frame_count=constants.TRAIN_FRAME_COUNT, face_size=constants.TRAIN_FACE_SIZE, keep_tracks=keep_tracks)
             if len(faces) > 0:
                 for findex, face in enumerate(faces, start=1):
                     dataset_slice[str(findex) + file_name] = (label, face)
