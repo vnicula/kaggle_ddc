@@ -473,7 +473,7 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.05) #(lr=0.025)
+    optimizer = tf.keras.optimizers.Adam(lr=0.02) #(lr=0.025)
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -502,8 +502,8 @@ def compile_model(model):
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
-    # my_loss = binary_focal_loss()
+    # my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
+    my_loss = binary_focal_loss(alpha=0.7)
     # parallel_model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
     # print(parallel_model.summary())
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -720,9 +720,9 @@ if __name__ == '__main__':
             factor=0.95, patience=1, min_lr=5e-6, verbose=1, mode='min')
     ]
     
-    class_weight={0: 0.65, 1: 0.35}
+    # class_weight={0: 0.65, 1: 0.35}
     # class_weight=[0.99, 0.01]
-    history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
+    history = model.fit(train_dataset, epochs=num_epochs, #class_weight=class_weight, 
         validation_data=eval_dataset, #validation_steps=validation_steps, 
         callbacks=callbacks)
     
