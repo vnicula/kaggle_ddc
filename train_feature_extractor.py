@@ -166,7 +166,7 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.02)  # (lr=0.025)
+    optimizer = tf.keras.optimizers.Adam(lr=0.1)  # (lr=0.025)
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -222,7 +222,7 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str, default=None)
     args = parser.parse_args()
 
-    num_epochs = 1
+    num_epochs = 1000
     # validation_steps = 32
     batch_size = 64
     in_shape = constants.FEAT_SHAPE
@@ -248,10 +248,10 @@ if __name__ == '__main__':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size)
         eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size)
 
-        lr_callback = LRFinder(num_samples=15872, batch_size=batch_size,
-                       minimum_lr=1e-5, maximum_lr=5e-1,
-                       # validation_data=(X_val, Y_val),
-                       lr_scale='exp', save_dir='.')
+        # lr_callback = LRFinder(num_samples=15872, batch_size=batch_size,
+        #                minimum_lr=1e-5, maximum_lr=5e-1,
+        #                # validation_data=(X_val, Y_val),
+        #                lr_scale='exp', save_dir='.')
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
@@ -271,9 +271,9 @@ if __name__ == '__main__':
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-            # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-            #                                      factor=0.95, patience=3, min_lr=5e-6, verbose=1, mode='min'),
-            lr_callback,
+            tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+                                                 factor=0.95, patience=5, min_lr=5e-4, verbose=1, mode='min'),
+            # lr_callback,
         ]
 
         # class_weight={0: 0.65, 1: 0.35}
