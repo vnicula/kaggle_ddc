@@ -100,24 +100,21 @@ def run(detector, input_dir, max_fakes):
     for file_name in tqdm.tqdm(label_data):
         if label_data[file_name]['label'] == 'FAKE':
             real_file = label_data[file_name]['original']
-            real_faces, selected_fake_faces, real_detection = process_pair(
-                detector, os.path.join(input_dir,real_file), os.path.join(input_dir, file_name), track_cache, max_fakes)
-            if real_detection:
-                imwrite_faces(writing_dir_0, real_file, real_faces, 0)
-            imwrite_faces(writing_dir_1, file_name, selected_fake_faces, 1)
+            real_file_path = os.path.join(input_dir,real_file)
+            fake_file_path = os.path.join(input_dir, file_name)
+            if os.path.exists(real_file_path) and os.path.exists(fake_file_path):
+                real_faces, selected_fake_faces, real_detection = process_pair(
+                    detector, real_file_path, fake_file_path, track_cache, max_fakes)
+                if real_detection:
+                    imwrite_faces(writing_dir_0, real_file, real_faces, 0)
+                imwrite_faces(writing_dir_1, file_name, selected_fake_faces, 1)
 
 
 if __name__ == '__main__':
 
     t0 = time.time()
 
-    # device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
-    print(device)
-    detector = MTCNN(device=device, margin=constants.MARGIN, min_face_size=20, post_process=False, keep_all=True, select_largest=False)
-
     track_cache = {}
-
     # real_faces, fake_faces, real_detection = process_pair(
     #     detector,
     #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/wcqvzujamg.mp4",
@@ -129,7 +126,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dirs', type=str)
+    parser.add_argument('--device', type=str, default='cpu')
     args = parser.parse_args()
+
+    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
+        post_process=False, keep_all=True, select_largest=False)
 
     dirs = glob.glob(args.input_dirs)
     for dir in dirs:

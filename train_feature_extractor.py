@@ -1,3 +1,4 @@
+import argparse
 import constants
 from PIL import Image
 import numpy as np
@@ -5,6 +6,30 @@ import matplotlib.pyplot as plt
 import os
 import tensorflow as tf
 import time
+
+from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
+from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
+from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
+
+from keras_utils import binary_focal_loss, save_loss, LRFinder
+
+tfkl = tf.keras.layers
+
+INPUT_WIDTH = 256
+INPUT_HEIGHT = 256
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
 
 
 def get_label(file_path):
@@ -24,30 +49,166 @@ def decode_img(img):
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
     # resize the image to the desired size.
-#   return tf.image.resize(img, [IMG_WIDTH, IMG_HEIGHT])
+    img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
     return img
 
 
 def process_path(file_path):
-  label = get_label(file_path)
-  # load the raw data from the file as a string
-  img = tf.io.read_file(file_path)
-  img = decode_img(img)
-  return img, label
+    label = get_label(file_path)
+    # load the raw data from the file as a string
+    img = tf.io.read_file(file_path)
+    img = decode_img(img)
+    return img, label
 
 
-def input_dataset(input_dir, is_training):
+def prepare_dataset(ds, is_training, batch_size, cache=True, shuffle_buffer_size=1000):
+    # This is a small dataset, only load it once, and keep it in memory.
+    # use `.cache(filename)` to cache preprocessing work for datasets that don't
+    # fit in memory.
+    if cache:
+        if isinstance(cache, str):
+            ds = ds.cache(cache)
+        else:
+            ds = ds.cache()
+
+    if is_training:
+        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+
+    # Repeat forever
+    # ds = ds.repeat()
+
+    ds = ds.batch(batch_size)
+
+    # `prefetch` lets the dataset fetch batches in the background while the model
+    # is training.
+    ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+    return ds
+
+
+def input_dataset(input_dir, is_training, batch_size):
     list_ds = tf.data.Dataset.list_files(input_dir)
-    labeled_ds = list_ds.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    labeled_ds = list_ds.map(
+        process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    prepared_ds = prepare_dataset(labeled_ds, is_training, batch_size)
+
+    return prepared_ds
 
 
 def show_batch(image_batch, label_batch):
-  plt.figure(figsize=(10,10))
-  for n in range(25):
-      ax = plt.subplot(5,5,n+1)
-      plt.imshow(image_batch[n])
-      plt.title(str(label_batch[n]))
-      plt.axis('off')
+    plt.figure(figsize=(10, 10))
+    for n in range(25):
+        ax = plt.subplot(5, 5, n+1)
+        plt.imshow(image_batch[n])
+        plt.title(str(label_batch[n]))
+        plt.axis('off')
+
+
+class MesoInception4():
+    def __init__(self, learning_rate=0.001):
+        self.model = self.init_model()
+        # optimizer = Adam(lr = learning_rate)
+        # self.model.compile(optimizer = optimizer, loss = 'mean_squared_error', metrics = ['accuracy'])
+
+    def InceptionLayer(self, a, b, c, d):
+        def func(x):
+            x1 = Conv2D(a, (1, 1), padding='same', activation='relu')(x)
+
+            x2 = Conv2D(b, (1, 1), padding='same', activation='relu')(x)
+            x2 = Conv2D(b, (3, 3), padding='same', activation='relu')(x2)
+
+            x3 = Conv2D(c, (1, 1), padding='same', activation='relu')(x)
+            x3 = Conv2D(c, (3, 3), dilation_rate=2, strides=1,
+                        padding='same', activation='relu')(x3)
+
+            x4 = Conv2D(d, (1, 1), padding='same', activation='relu')(x)
+            x4 = Conv2D(d, (3, 3), dilation_rate=3, strides=1,
+                        padding='same', activation='relu')(x4)
+
+            y = Concatenate(axis=-1)([x1, x2, x3, x4])
+
+            return y
+        return func
+
+    def init_model(self):
+        x = Input(shape=(256, 256, 3))
+
+        x1 = self.InceptionLayer(1, 4, 4, 2)(x)
+        x1 = BatchNormalization()(x1)
+        x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
+
+        x2 = self.InceptionLayer(2, 4, 4, 2)(x1)
+        x2 = BatchNormalization()(x2)
+        x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)
+
+        x3 = Conv2D(16, (5, 5), padding='same', activation='relu')(x2)
+        x3 = BatchNormalization()(x3)
+        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
+
+        x4 = Conv2D(16, (5, 5), padding='same', activation='relu')(x3)
+        x4 = BatchNormalization()(x4)
+        x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
+
+        y = Flatten()(x4)
+        y = Dropout(0.5)(y)
+        y = Dense(16)(y)
+        y = LeakyReLU(alpha=0.1)(y)
+        y = Dropout(0.5)(y)
+        y = Dense(1, activation='sigmoid')(y)
+
+        return Model(inputs=x, outputs=y)
+
+
+def fraction_positives(y_true, y_pred):
+    return tf.keras.backend.mean(y_true)
+
+
+def compile_model(model):
+
+    optimizer = tf.keras.optimizers.Adam(lr=0.02)  # (lr=0.025)
+    # learning_rate=CustomSchedule(D_MODEL)
+    # optimizer = tf.keras.optimizers.Adam(
+    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+
+    # TODO keras needs custom_objects when loading models with custom metrics
+    # But this one needs the optimizer.
+    # def get_lr_metric(optimizer):
+    #     def lr(y_true, y_pred):
+    #         return optimizer.lr
+    #     return lr
+    # lr_metric = get_lr_metric(optimizer)
+
+    thresh = 0.5
+    METRICS = [
+        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
+        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
+        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
+        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
+        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
+        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
+        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
+        tf.keras.metrics.AUC(name='auc'),
+        # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
+        tf.keras.metrics.BinaryCrossentropy(),
+        fraction_positives,
+        # lr_metric,
+    ]
+    # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
+    # my_loss = binary_focal_loss(alpha=0.7)
+    # my_loss = 'mean_squared_error'
+    model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
+
+    return model
+
+
+def create_model(input_shape):
+
+    classifier = MesoInception4()
+    print(classifier.model.summary())
+
+    return classifier.model
 
 
 if __name__ == '__main__':
@@ -55,18 +216,19 @@ if __name__ == '__main__':
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', type=str, default='train')
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--load', type=str, default=None)
     args = parser.parse_args()
 
-    train_dataset = input_dataset(args.train_dir, is_training=True)
-    eval_dataset = input_dataset(args.eval_dir, is_training=False)
- 
+    num_epochs = 1
+    # validation_steps = 32
+    batch_size = 64
     in_shape = constants.FEAT_SHAPE
 
     custom_objs = {
-        'fraction_positives':fraction_positives,
+        'fraction_positives': fraction_positives,
     }
 
     strategy = tf.distribute.MirroredStrategy()
@@ -82,50 +244,56 @@ if __name__ == '__main__':
             print('Training model from scratch.')
         compile_model(model)
 
-    num_epochs = 1000
-    # validation_steps = 32
-    batch_size = 64
+    if args.mode == 'train':
+        train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size)
+        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size)
 
-    # Cached for small datasets
-    # train_dataset = train_dataset.shuffle(buffer_size=256).cache().batch(batch_size).prefetch(2)
-    # eval_dataset = eval_dataset.take(validation_steps * (batch_size + 1)).cache().batch(batch_size).prefetch(1)
-    train_dataset = train_dataset.batch(batch_size).prefetch(4)
-    eval_dataset = eval_dataset.batch(batch_size).prefetch(4)
+        lr_callback = LRFinder(num_samples=15872, batch_size=batch_size,
+                       minimum_lr=1e-5, maximum_lr=5e-1,
+                       # validation_data=(X_val, Y_val),
+                       lr_scale='exp', save_dir='.')
 
-    callbacks = [
-        tf.keras.callbacks.ModelCheckpoint(
-            filepath='featxw_{epoch}.h5',
-            save_best_only=True,
-            monitor='val_auc',
-            # save_format='tf',
-            save_weights_only=True,
-            verbose=1),
-        tf.keras.callbacks.EarlyStopping(
-            # Stop training when `val_loss` is no longer improving
-            # monitor='val_loss', # watch out for reg losses
-            monitor='val_loss',
-            min_delta=1e-4,
-            patience=20,
-            verbose=1),
-        tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
-        # tf.keras.callbacks.LearningRateScheduler(step_decay),
-        # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
-            factor=0.95, patience=3, min_lr=5e-6, verbose=1, mode='min')
-    ]
-    
-    # class_weight={0: 0.65, 1: 0.35}
-    # class_weight=[0.99, 0.01]
-    history = model.fit(train_dataset, epochs=num_epochs, #class_weight=class_weight, 
-        validation_data=eval_dataset, #validation_steps=validation_steps, 
-        callbacks=callbacks)
-    
-    model.save('final_featx_model.h5')
-    # new_model = tf.keras.models.load_model('my_model')
-    # new_model.summary()
+        callbacks = [
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath='featxw_{epoch}.h5',
+                save_best_only=True,
+                monitor='val_binary_crossentropy',
+                # save_format='tf',
+                save_weights_only=True,
+                verbose=1),
+            tf.keras.callbacks.EarlyStopping(
+                # Stop training when `val_loss` is no longer improving
+                # monitor='val_loss', # watch out for reg losses
+                monitor='val_binary_crossentropy',
+                min_delta=1e-4,
+                patience=20,
+                verbose=1),
+            tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
+            # tf.keras.callbacks.LearningRateScheduler(step_decay),
+            # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
+            # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+            #                                      factor=0.95, patience=3, min_lr=5e-6, verbose=1, mode='min'),
+            lr_callback,
+        ]
 
-    save_loss(history, 'final_featx_model')
+        # class_weight={0: 0.65, 1: 0.35}
+        # class_weight=[0.99, 0.01]
+        history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
+                            validation_data=eval_dataset,  # validation_steps=validation_steps,
+                            callbacks=callbacks)
+
+        model.save('final_featx_model.h5')
+        # new_model = tf.keras.models.load_model('my_model')
+        # new_model.summary()
+        
+        lr_callback.plot_schedule()
+        save_loss(history, 'final_featx_model')
+
+
+    elif args.mode == 'eval':
+        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size)
+        model.evaluate(eval_dataset)
+
     t1 = time.time()
 
     print("Execution took: {}".format(t1-t0))
-
