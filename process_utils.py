@@ -12,7 +12,8 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps, skip_
     fps = vidcap.get(cv2.CAP_PROP_FPS)
     width = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)) # float
     height = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # float
-    print('cv2.FRAME_COUNT {}, cv2.PROP_FPS {}, cv2.FRAME_WIDTH {}, cv2.FRAME_HEIGHT {}'.format(frame_num, fps, width, height))
+    print('{}: cv2.FRAME_COUNT {}, cv2.PROP_FPS {}, cv2.FRAME_WIDTH {}, cv2.FRAME_HEIGHT {}'.format(
+        video_path, frame_num, fps, width, height))
     
     skip_n = max(math.floor(fps / sample_fps), 0)
     max_dimension = max(width, height)
@@ -81,7 +82,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         imgs_pil = [Image.fromarray(image) for image in images[lb:lb+batch_size]]
         frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
         if (frames_boxes is not None) and (len(frames_boxes) > 0):
-            print(frames_boxes, frames_confidences)
+            # print(frames_boxes, frames_confidences)
             for i in range(len(frames_boxes)):
                 if frames_boxes[i] is not None:
                     boxes = []
@@ -93,7 +94,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
 
     # Can't use anything since it's multitrack fake
     if label == 1 and len(tracks) > 1:
-        return faces
+        return faces, tracks[:keep_tracks]
 
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
     # print(tracks)

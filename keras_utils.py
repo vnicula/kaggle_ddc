@@ -504,3 +504,16 @@ class LRFinder(tf.keras.callbacks.Callback):
     #     ax.set_xscale('log')
     #     ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.0e'))
     #     ax.plot(self.lrs, self.losses)
+
+def save_loss(H, run_name):
+    plt.figure()
+    N = len(H.history["loss"])
+    plt.plot(np.arange(0, N), H.history["loss"], label="train_loss")
+    plt.plot(np.arange(0, N), H.history["val_loss"], label="val_loss")
+    plt.plot(np.arange(0, N), H.history["acc"], label="train_acc")
+    plt.plot(np.arange(0, N), H.history["val_acc"], label="val_acc")
+    plt.title("Training Loss and Accuracy")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Loss/Accuracy")
+    plt.legend(loc="lower left")
+    plt.savefig(run_name + "_loss.png")

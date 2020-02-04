@@ -157,7 +157,7 @@ if __name__ == '__main__':
     if len(names) > 0:
         folder = os.path.dirname(pkl_file)
         folder_index = folder.split('_')[-1]
-        tf_file = os.path.join(folder, folder_index + '_%d'%records_batch)
+        tf_file = os.path.join(folder, folder_index + '_%d.tfrecord'%records_batch)
         save_numpy_to_tfrecords(names, samples, masks, labels, tf_file)
 
     t1 = time.time()

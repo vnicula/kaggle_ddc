@@ -24,7 +24,7 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 from tensorflow.keras.utils import multi_gpu_model
 
-from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention, binary_focal_loss
+from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention, binary_focal_loss, save_loss
 # from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
@@ -356,7 +356,7 @@ def fake_read_file(file_path):
 
 #     return dataset
 
-# TODO
+
 def tfrecords_dataset(input_dir, is_training):
     print('Using tfrecords dataset from: ', input_dir)
     
@@ -622,20 +622,6 @@ def create_model(input_shape):
     return model
 
 
-def save_loss(H):
-    plt.figure()
-    N = len(H.history["loss"])
-    plt.plot(np.arange(0, N), H.history["loss"], label="train_loss")
-    plt.plot(np.arange(0, N), H.history["val_loss"], label="val_loss")
-    plt.plot(np.arange(0, N), H.history["acc"], label="train_acc")
-    plt.plot(np.arange(0, N), H.history["val_acc"], label="val_acc")
-    plt.title("Training Loss and Accuracy")
-    plt.xlabel("Epoch #")
-    plt.ylabel("Loss/Accuracy")
-    plt.legend(loc="lower left")
-    plt.savefig("loss.png")
-
-
 def step_decay(epoch):
     initial_lrate = 0.045
     drop = 0.9
@@ -730,7 +716,7 @@ if __name__ == '__main__':
     # new_model = tf.keras.models.load_model('my_model')
     # new_model.summary()
 
-    save_loss(history)
+    save_loss(history, 'final_model')
     t1 = time.time()
 
     print("Execution took: {}".format(t1-t0))

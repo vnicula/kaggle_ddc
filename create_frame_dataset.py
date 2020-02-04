@@ -1,15 +1,18 @@
 import argparse
 import constants
 import cv2
+import glob
+import json
 import numpy as np
 import os
 import process_utils
+import random
 import time
 import torch
+import tqdm
 
 from facenet_pytorch import MTCNN
 
-# TODO: exclude fakes with two faces - there's no good way to identify the fake track
 
 def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
@@ -19,38 +22,51 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
     assert real_scale == fake_scale
     real_vid_name = os.path.basename(real_vid_path)
     if real_vid_name in track_cache:
+        print('Found {} in track cache, skipping detection.'.format(real_vid_name))
+        real_detection = False
         tracks = track_cache[real_vid_name]
         real_faces = process_utils.get_faces_from_tracks(real_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
     else:
+        real_detection = True
         real_faces, tracks = process_utils.detect_faces_bbox(detector, 0, real_imgs, real_imrs, 256, 
             real_scale, constants.TRAIN_FACE_SIZE, keep_tracks=2)
-    fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
-
-    real_faces = [item for sublist in real_faces for item in sublist]
-    fake_faces = [item for sublist in fake_faces for item in sublist]
-    img_diffs = []
-    for real_face, fake_face in zip(real_faces, fake_faces):
-        img_diffs.append(np.mean(np.abs(real_face - fake_face)))
-
-    real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
-        zip(real_faces, fake_faces, img_diffs),
-        key=lambda pair: pair[2],
-        reverse=True)
-        )
-    )
-
-    selected_fake_faces = []
-    for fake_face, face_diff in zip(fake_faces, img_diffs):
-        print('face diff: ', face_diff)
-        if face_diff > 70:
-            selected_fake_faces.append(fake_face)
-            if len(selected_fake_faces) >= max_fakes:
-                break
-
-    return real_faces, selected_fake_faces
+        print('Adding {} to track cache.'.format(real_vid_name))
+        track_cache[real_vid_name] = tracks
     
+    real_faces = [item for sublist in real_faces for item in sublist]
+    if len(tracks) > 1:
+        # exclude fakes with two faces - there's no good way to identify the fake track
+        # print(real_faces)
+        return random.sample(real_faces, min(len(real_faces), 3*max_fakes)), [], real_detection
+    
+    if len(real_faces) > 0:
+        fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
+        fake_faces = [item for sublist in fake_faces for item in sublist]
+        img_diffs = []
+        for real_face, fake_face in zip(real_faces, fake_faces):
+            img_diffs.append(np.mean(np.abs(real_face - fake_face)))
 
-def imwrite_selected_faces(real_faces, fake_faces):
+        real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
+            zip(real_faces, fake_faces, img_diffs),
+            key=lambda pair: pair[2],
+            reverse=True)
+            )
+        )
+
+        selected_fake_faces = []
+        for fake_face, face_diff in zip(fake_faces, img_diffs):
+            print('face diff: ', face_diff)
+            if face_diff > 80:
+                selected_fake_faces.append(fake_face)
+                if len(selected_fake_faces) >= max_fakes:
+                    break
+
+        return real_faces[:3*max_fakes], selected_fake_faces, real_detection
+
+    return [], [], real_detection    
+
+
+def imwrite_tiled_faces(real_faces, fake_faces):
     if len(fake_faces) > 0:
         assert len(real_faces) >= len(fake_faces)
         real_faces = real_faces[:len(fake_faces)]
@@ -65,40 +81,59 @@ def imwrite_selected_faces(real_faces, fake_faces):
         cv2.imwrite('selected_faces.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
 
 
-def run(input_dir):
+def imwrite_faces(output_dir, vid_file, faces, label):    
+    for i, face in enumerate(faces):
+        file_name = os.path.join(output_dir, vid_file + '_' + str(i) + '.png')
+        cv2.imwrite(file_name, cv2.cvtColor(face, cv2.COLOR_RGB2BGR))
+
+
+def run(detector, input_dir, max_fakes):
     with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
         label_data = json.load(json_file)
-    
-    for file_name in label_data:
+
+    writing_dir_0 = os.path.join(input_dir, '0')
+    os.makedirs(writing_dir_0, exist_ok=True)
+    writing_dir_1 = os.path.join(input_dir, '1')
+    os.makedirs(writing_dir_1, exist_ok=True)
+
+    track_cache = {}
+    for file_name in tqdm.tqdm(label_data):
         if label_data[file_name]['label'] == 'FAKE':
             real_file = label_data[file_name]['original']
+            real_faces, selected_fake_faces, real_detection = process_pair(
+                detector, os.path.join(input_dir,real_file), os.path.join(input_dir, file_name), track_cache, max_fakes)
+            if real_detection:
+                imwrite_faces(writing_dir_0, real_file, real_faces, 0)
+            imwrite_faces(writing_dir_1, file_name, selected_fake_faces, 1)
 
 
 if __name__ == '__main__':
 
     t0 = time.time()
 
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    # device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    device = 'cpu'
     print(device)
     detector = MTCNN(device=device, margin=constants.MARGIN, min_face_size=20, post_process=False, keep_all=True, select_largest=False)
 
     track_cache = {}
-    real_faces, fake_faces = process_pair(
-        detector,
-        "F:/deepfake-data/dfdc_train_part_30/lccunsxtov.mp4",
-        "F:/deepfake-data/dfdc_train_part_30/rzjazgejby.mp4",
-        track_cache,
-        20,
-    )
-    imwrite_selected_faces(real_faces, fake_faces)
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--input_dirs', type=str)
-    # args = parser.parse_args()
+    # real_faces, fake_faces, real_detection = process_pair(
+    #     detector,
+    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/wcqvzujamg.mp4",
+    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/dtjcyzgdts.mp4",
+    #     track_cache,
+    #     5,
+    # )
+    # imwrite_tiled_faces(real_faces, fake_faces)
 
-    # dirs = glob.glob(args.input_dirs)
-    # for dir in dirs:
-    #     run(dir)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dirs', type=str)
+    args = parser.parse_args()
+
+    dirs = glob.glob(args.input_dirs)
+    for dir in dirs:
+        run(detector, dir, 5)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
