@@ -66,6 +66,18 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
     return [], [], real_detection    
 
 
+def process_single(detector, vid_path, label, max_faces):
+    imgs, imrs, scale = process_utils.parse_vid(vid_path, constants.MAX_DETECTION_SIZE,
+        constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
+
+    faces, tracks = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, 
+            scale, constants.TRAIN_FACE_SIZE, keep_tracks=2)
+    
+    faces = [item for sublist in faces for item in sublist]
+    
+    return random.sample(faces, min(len(faces), max_faces))
+
+
 def imwrite_tiled_faces(real_faces, fake_faces):
     if len(fake_faces) > 0:
         assert len(real_faces) >= len(fake_faces)
@@ -81,7 +93,7 @@ def imwrite_tiled_faces(real_faces, fake_faces):
         cv2.imwrite('selected_faces.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
 
 
-def imwrite_faces(output_dir, vid_file, faces, label):    
+def imwrite_faces(output_dir, vid_file, faces):    
     for i, face in enumerate(faces):
         file_name = os.path.join(output_dir, vid_file + '_' + str(i) + '.png')
         cv2.imwrite(file_name, cv2.cvtColor(face, cv2.COLOR_RGB2BGR))
@@ -106,8 +118,20 @@ def run(detector, input_dir, max_fakes):
                 real_faces, selected_fake_faces, real_detection = process_pair(
                     detector, real_file_path, fake_file_path, track_cache, max_fakes)
                 if real_detection:
-                    imwrite_faces(writing_dir_0, real_file, real_faces, 0)
-                imwrite_faces(writing_dir_1, file_name, selected_fake_faces, 1)
+                    imwrite_faces(writing_dir_0, real_file, real_faces)
+                imwrite_faces(writing_dir_1, file_name, selected_fake_faces)
+
+
+def run_label(detector, input_dir, max_faces, label):
+
+    writing_dir = os.path.join(input_dir, label)
+    os.makedirs(writing_dir, exist_ok=True)
+    file_list = glob.glob(input_dir + '/*.mp4')
+
+    for file_path in tqdm.tqdm(file_list):
+        file_name = os.path.basename(file_path)
+        faces = process_single(detector, file_path, int(label), max_faces)
+        imwrite_faces(writing_dir, file_name, faces)
 
 
 if __name__ == '__main__':
@@ -127,14 +151,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dirs', type=str)
     parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--label', type=str, default='json')
     args = parser.parse_args()
 
     detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
         post_process=False, keep_all=True, select_largest=False)
 
     dirs = glob.glob(args.input_dirs)
+    label = args.label
     for dir in dirs:
-        run(detector, dir, 5)
+        if 'json' == label:
+            run(detector, dir, 5)
+        else:
+            run_label(detector, dir, 15, label)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
