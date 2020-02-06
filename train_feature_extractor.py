@@ -7,6 +7,8 @@ import os
 import tensorflow as tf
 import time
 
+from tensorflow.keras.applications.xception import Xception
+
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
@@ -46,11 +48,31 @@ def get_label(file_path):
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
+    
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-    img = tf.image.convert_image_dtype(img, tf.float32)
+    # img = tf.image.convert_image_dtype(img, tf.float32)
+    
+    # Xception
+    img = tf.cast(img, tf.float32)
+    
     # resize the image to the desired size.
-    img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
+    # img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
     return img
+
+
+def augment(x: tf.Tensor) -> tf.Tensor:
+    """augmentation
+    Args:
+        x: Image
+    Returns:
+        Augmented image
+    """
+    x = tf.image.random_hue(x, 0.08)
+    x = tf.image.random_saturation(x, 0.6, 1.6)
+    x = tf.image.random_brightness(x, 0.05)
+    x = tf.image.random_contrast(x, 0.7, 1.3)
+    x = tf.image.random_flip_left_right(x)
+    return x
 
 
 def process_path(file_path):
@@ -58,11 +80,16 @@ def process_path(file_path):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = decode_img(img)
+    # TODO make sure you take this out for non xception backbones
+    img = tf.keras.applications.xception.preprocess_input(img)
+
+    # minimal augmentation
+    img = augment(img)    
+
     return img, label
 
 
-def prepare_dataset(ds, is_training, batch_size, cache=True, shuffle_buffer_size=1000):
-    # This is a small dataset, only load it once, and keep it in memory.
+def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=50000):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
     if cache:
@@ -86,12 +113,12 @@ def prepare_dataset(ds, is_training, batch_size, cache=True, shuffle_buffer_size
     return ds
 
 
-def input_dataset(input_dir, is_training, batch_size):
+def input_dataset(input_dir, is_training, batch_size, cache):
     list_ds = tf.data.Dataset.list_files(input_dir)
     labeled_ds = list_ds.map(
         process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    prepared_ds = prepare_dataset(labeled_ds, is_training, batch_size)
+    prepared_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
 
     return prepared_ds
 
@@ -108,6 +135,7 @@ def show_batch(image_batch, label_batch):
 class MesoInception4():
     def __init__(self, learning_rate=0.001):
         self.model = self.init_model()
+        self.model.load_weights('pretrained/Meso/c23/all/weights.h5')
         # optimizer = Adam(lr = learning_rate)
         # self.model.compile(optimizer = optimizer, loss = 'mean_squared_error', metrics = ['accuracy'])
 
@@ -164,20 +192,17 @@ def fraction_positives(y_true, y_pred):
     return tf.keras.backend.mean(y_true)
 
 
-def compile_model(model):
+def compile_model(model, mode):
 
-    optimizer = tf.keras.optimizers.Adam(lr=0.1)  # (lr=0.025)
+    if mode == 'train' or mode == 'eval':
+        optimizer = tf.keras.optimizers.Adam(lr=0.025)  # (lr=0.025)
+    elif mode == 'tune':
+        optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
+        # optimizer = tf.keras.optimizers.SGD(lr=0.0001, momentum=0.9)
+
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
-
-    # TODO keras needs custom_objects when loading models with custom metrics
-    # But this one needs the optimizer.
-    # def get_lr_metric(optimizer):
-    #     def lr(y_true, y_pred):
-    #         return optimizer.lr
-    #     return lr
-    # lr_metric = get_lr_metric(optimizer)
 
     thresh = 0.5
     METRICS = [
@@ -195,7 +220,7 @@ def compile_model(model):
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05)
     # my_loss = binary_focal_loss(alpha=0.7)
     # my_loss = 'mean_squared_error'
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -203,12 +228,59 @@ def compile_model(model):
     return model
 
 
-def create_model(input_shape):
+def create_meso_model(input_shape, mode):
 
     classifier = MesoInception4()
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name)
+
+    if mode == 'train':
+        print('\nFreezing all conv Meso layers!')
+        for layer in classifier.model.layers:
+            if 'dense' not in layer.name:
+                layer.trainable = False
+
     print(classifier.model.summary())
 
     return classifier.model
+
+
+def create_xception_model(input_shape, mode):
+
+    input_tensor = Input(shape=input_shape)
+    # create the base pre-trained model
+    xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
+    print('Loading xception weights from: ', xception_weights)
+    base_model = Xception(weights=xception_weights, 
+        input_tensor=input_tensor, include_top=False, pooling='avg')
+
+    if mode == 'train':
+        # print('\nFreezing all Xception layers!')
+        # for layer in base_model.layers:
+        #     layer.trainable = False
+        print('\nUnfreezing last Xception layers!')
+        for layer in base_model.layers[:129]:
+            layer.trainable = False
+        for layer in base_model.layers[129:]:
+            layer.trainable = True
+    elif mode == 'tune':
+        print('\nUnfreezing last 20 something Xception layers!')
+        for layer in base_model.layers[:100]:
+            layer.trainable = False
+        for layer in base_model.layers[100:]:
+            layer.trainable = True
+
+    net = base_model.output
+    # net = Dense(1024, activation='relu')(net)
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name, layer.trainable)
+    print(model.summary())
+
+    return model
 
 
 if __name__ == '__main__':
@@ -220,11 +292,12 @@ if __name__ == '__main__':
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--load', type=str, default=None)
+    parser.add_argument('--save', type=str, default='true')
     args = parser.parse_args()
 
     num_epochs = 1000
     # validation_steps = 32
-    batch_size = 64
+    batch_size = 256
     in_shape = constants.FEAT_SHAPE
 
     custom_objs = {
@@ -235,27 +308,34 @@ if __name__ == '__main__':
     print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
     with strategy.scope():
-        model = create_model(in_shape)
+        # due to bugs need to load weights for mirrored strategy - cannot load full model
+        model = create_xception_model(in_shape, args.mode)
+        # model = create_meso_model(in_shape, args.mode)
         if args.load is not None:
-            print('Loading weights from: ', args.load)
+            print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
             model.load_weights(args.load)
         else:
-            print('Training model from scratch.')
-        compile_model(model)
+            print('\nTraining model from scratch.')
+        compile_model(model, args.mode)
 
-    if args.mode == 'train':
-        train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size)
-        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size)
+    if args.mode == 'train' or args.mode == 'tune':
+        train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
+            cache=False
+            # cache='/raid/scratch/training_cache.mem'
+        )
+        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, 
+            cache=True
+        )
 
-        # lr_callback = LRFinder(num_samples=15872, batch_size=batch_size,
+        # lr_callback = LRFinder(num_samples=33501, batch_size=batch_size,
         #                minimum_lr=1e-5, maximum_lr=5e-1,
         #                # validation_data=(X_val, Y_val),
         #                lr_scale='exp', save_dir='.')
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='featxw_{epoch}.h5',
+                filepath='featx_weights_{epoch}.h5',
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
@@ -266,33 +346,34 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=20,
+                patience=30,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 factor=0.95, patience=5, min_lr=5e-4, verbose=1, mode='min'),
+                                                 factor=0.96, patience=4, min_lr=5e-4, verbose=1, mode='min'),
             # lr_callback,
         ]
 
-        # class_weight={0: 0.65, 1: 0.35}
+        class_weight={0: 0.55, 1: 0.45}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
+        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
-
-        model.save('final_featx_model.h5')
-        # new_model = tf.keras.models.load_model('my_model')
-        # new_model.summary()
         
-        lr_callback.plot_schedule()
+        # lr_callback.plot_schedule()
         save_loss(history, 'final_featx_model')
 
 
     elif args.mode == 'eval':
-        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size)
+        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
         model.evaluate(eval_dataset)
+
+    if args.save is not None:
+        model.save(args.load + '_full_model.h5')
+        # new_model = tf.keras.models.load_model('my_model')
+        # new_model.summary()
 
     t1 = time.time()
 
