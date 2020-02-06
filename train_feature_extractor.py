@@ -334,11 +334,12 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='true')
     parser.add_argument('--lr', type=float, default=0.0001)
+    parser.add_argument('--batch_size', type=int, default=512)
     args = parser.parse_args()
 
     num_epochs = 1000
     # validation_steps = 32
-    batch_size = 512
+    batch_size = int(args.batch_size)
     in_shape = constants.FEAT_SHAPE
 
     custom_objs = {
