@@ -8,6 +8,7 @@ import tensorflow as tf
 import time
 
 from tensorflow.keras.applications.xception import Xception
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
@@ -50,13 +51,13 @@ def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
     
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-    # img = tf.image.convert_image_dtype(img, tf.float32)
+    img = tf.image.convert_image_dtype(img, tf.float32)
     
     # Xception
-    img = tf.cast(img, tf.float32)
+    # img = tf.cast(img, tf.float32)
     
     # resize the image to the desired size.
-    # img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
+    img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
     return img
 
 
@@ -67,8 +68,8 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     Returns:
         Augmented image
     """
-    x = tf.image.random_hue(x, 0.08)
-    x = tf.image.random_saturation(x, 0.6, 1.6)
+    # x = tf.image.random_hue(x, 0.08)
+    # x = tf.image.random_saturation(x, 0.6, 1.6)
     x = tf.image.random_brightness(x, 0.05)
     x = tf.image.random_contrast(x, 0.7, 1.3)
     x = tf.image.random_flip_left_right(x)
@@ -81,7 +82,8 @@ def process_path(file_path):
     img = tf.io.read_file(file_path)
     img = decode_img(img)
     # TODO make sure you take this out for non xception backbones
-    img = tf.keras.applications.xception.preprocess_input(img)
+    # img = tf.keras.applications.xception.preprocess_input(img)
+    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
 
     # minimal augmentation
     img = augment(img)    
@@ -89,7 +91,7 @@ def process_path(file_path):
     return img, label
 
 
-def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=50000):
+def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=60000):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
     if cache:
@@ -192,13 +194,13 @@ def fraction_positives(y_true, y_pred):
     return tf.keras.backend.mean(y_true)
 
 
-def compile_model(model, mode):
+def compile_model(model, mode, lr):
 
     if mode == 'train' or mode == 'eval':
-        optimizer = tf.keras.optimizers.Adam(lr=0.025)  # (lr=0.025)
+        optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
     elif mode == 'tune':
-        optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.SGD(lr=0.0001, momentum=0.9)
+        # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
+        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
@@ -220,7 +222,7 @@ def compile_model(model, mode):
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05)
+    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
     # my_loss = binary_focal_loss(alpha=0.7)
     # my_loss = 'mean_squared_error'
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -231,15 +233,17 @@ def compile_model(model, mode):
 def create_meso_model(input_shape, mode):
 
     classifier = MesoInception4()
-    for i, layer in enumerate(classifier.model.layers):
-        print(i, layer.name)
 
     if mode == 'train':
         print('\nFreezing all conv Meso layers!')
         for layer in classifier.model.layers:
             if 'dense' not in layer.name:
                 layer.trainable = False
+    if mode == 'tune':
+        print('\nUnfreezing all Meso layers!')
 
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name, layer.trainable)
     print(classifier.model.summary())
 
     return classifier.model
@@ -264,10 +268,46 @@ def create_xception_model(input_shape, mode):
         for layer in base_model.layers[129:]:
             layer.trainable = True
     elif mode == 'tune':
-        print('\nUnfreezing last 20 something Xception layers!')
-        for layer in base_model.layers[:100]:
+        print('\nUnfreezing last k something Xception layers!')
+        for layer in base_model.layers[:126]:
             layer.trainable = False
-        for layer in base_model.layers[100:]:
+        for layer in base_model.layers[126:]:
+            layer.trainable = True
+
+    net = base_model.output
+    # net = Dense(1024, activation='relu')(net)
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    model = Model(inputs=base_model.input, outputs=out)
+    print(model.summary())
+
+    return model
+
+
+def create_mobilenet_model(input_shape, mode):
+
+    input_tensor = Input(shape=input_shape)
+    # create the base pre-trained model
+    mobilenet_weights = 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+    print('Loading mobilenet weights from: ', mobilenet_weights)
+    base_model = MobileNetV2(weights=mobilenet_weights, alpha = 1.0,
+        input_tensor=input_tensor, include_top=False, pooling='avg')
+
+    if mode == 'train':
+        # print('\nFreezing all Mobilenet layers!')
+        # for layer in base_model.layers:
+        #     layer.trainable = False
+        print('\nUnfreezing last Mobilenet layers!')
+        for layer in base_model.layers[:152]:
+            layer.trainable = False
+        for layer in base_model.layers[152:]:
+            layer.trainable = True
+    elif mode == 'tune':
+        print('\nUnfreezing last k something mobilenet layers!')
+        for layer in base_model.layers[:126]:
+            layer.trainable = False
+        for layer in base_model.layers[126:]:
             layer.trainable = True
 
     net = base_model.output
@@ -293,11 +333,12 @@ if __name__ == '__main__':
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='true')
+    parser.add_argument('--lr', type=float, default=0.0001)
     args = parser.parse_args()
 
     num_epochs = 1000
     # validation_steps = 32
-    batch_size = 256
+    batch_size = 512
     in_shape = constants.FEAT_SHAPE
 
     custom_objs = {
@@ -309,15 +350,15 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model = create_xception_model(in_shape, args.mode)
-        # model = create_meso_model(in_shape, args.mode)
+        # model = create_mobilenet_model(in_shape, args.mode)
+        model = create_meso_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
             model.load_weights(args.load)
         else:
             print('\nTraining model from scratch.')
-        compile_model(model, args.mode)
+        compile_model(model, args.mode, args.lr)
 
     if args.mode == 'train' or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
@@ -346,7 +387,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=30,
+                patience=50,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
@@ -371,7 +412,7 @@ if __name__ == '__main__':
         model.evaluate(eval_dataset)
 
     if args.save is not None:
-        model.save(args.load + '_full_model.h5')
+        model.save(args.load + '_' + args.mode + '_full_model.h5')
         # new_model = tf.keras.models.load_model('my_model')
         # new_model.summary()
 
