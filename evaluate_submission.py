@@ -2,7 +2,11 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pickle
+
 from sklearn.metrics import log_loss
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold
 
 def read_metadata(json_file):
     meta_df = pd.read_json(json_file)
@@ -44,18 +48,57 @@ if __name__ == '__main__':
     merged_df['binary_label'] = (merged_df['label'] == 'FAKE').astype(int)
     merged_df.to_csv('evaluated_submission.tsv')
 
-    nll = log_loss(merged_df['binary_label'], merged_df['score'])
+    X = merged_df['score'].values
+    y = merged_df['binary_label'].values
+
+    nll = log_loss(y, X)
     # print(*zip(merged_df['binary_label'], merged_df['score']))
+    print('Log loss on submission as is: {}'.format(nll))
 
-    print('Log loss on submission: {}'.format(nll))
+    all_half = np.full_like(X, 0.5)
+    print('Log loss on all 0.5 submission: {}'.format(log_loss(y, all_half)))
 
-    all_half = np.full_like(merged_df['score'], 0.5)
-    print('Log loss on 0.5 submission: {}'.format(log_loss(merged_df['binary_label'], all_half)))
+    skf = StratifiedKFold(n_splits=4, random_state=None, shuffle=False)
+    lr = LogisticRegression(solver='lbfgs', max_iter=200)
+    cv_log_loss_logistic = []
+    fold = 1
+    for train_index, test_index in skf.split(X, y):
+        # print("TRAIN:", train_index, "TEST:", test_index)
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
 
-    best_range, best_loss = compute_clip_range(merged_df['binary_label'], merged_df['score'])
-    print('Best log loss: {}, with clip range: {}'.format(best_loss, best_range))
+        best_range, best_loss = compute_clip_range(y_train, X_train)
+        print('Best fold {} train log loss: {}, with clip range: {}'.format(fold, best_loss, best_range))
+        X_test_clipped = np.clip(X_test, best_range[0], best_range[1])
+        test_log_loss = log_loss(y_test, X_test_clipped)
+        print('Fold {} test clip log loss: {}, with clip range: {}'.format(fold, test_log_loss, best_range))
 
+        lr.fit(X_train.reshape( -1, 1 ), y_train)
+        X_test_calibrated = lr.predict_proba(X_test.reshape( -1, 1 ))[:,1]
+        test_log_loss = log_loss(y_test, X_test_calibrated)
+        print('Fold {} test logistic log loss: {}.'.format(fold, test_log_loss))
+        cv_log_loss_logistic.append(test_log_loss)
+        fold += 1
+    
+    print('Average logistic calibrated log loss: {}.'.format(np.mean(cv_log_loss_logistic)))
+
+    # Fit on all data
+    lr.fit(X.reshape( -1, 1 ), y)
+    X_calibrated = lr.predict_proba(X.reshape( -1, 1 ))[:,1]
+    calibrated_log_loss = log_loss(y, X_calibrated)
+    print('Platt calibrated log loss: {}.'.format(calibrated_log_loss))
+
+    filename = 'score_calibration.pkl'
+    pickle.dump(lr, open(filename, 'wb'))
+    merged_df['calibrated_score'] = X_calibrated
+    
     merged_df[merged_df['label']=='REAL']['score'].hist(bins=100, label='REAL', alpha=0.5)
     merged_df[merged_df['label']=='FAKE']['score'].hist(bins=100, label='FAKE', alpha=0.5)
     plt.legend()
     plt.savefig('score_distribution.png')
+    plt.clf()
+
+    merged_df[merged_df['label']=='REAL']['calibrated_score'].hist(bins=100, label='REAL', alpha=0.5)
+    merged_df[merged_df['label']=='FAKE']['calibrated_score'].hist(bins=100, label='FAKE', alpha=0.5)
+    plt.legend()
+    plt.savefig('score_distribution_calibrated.png')

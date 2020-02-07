@@ -19,9 +19,6 @@ from keras_utils import binary_focal_loss, save_loss, LRFinder
 
 tfkl = tf.keras.layers
 
-INPUT_WIDTH = 256
-INPUT_HEIGHT = 256
-
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -57,7 +54,7 @@ def decode_img(img):
     # img = tf.cast(img, tf.float32)
     
     # resize the image to the desired size.
-    img = tf.image.resize(img, [INPUT_WIDTH, INPUT_HEIGHT])
+    img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
     return img
 
 
@@ -162,7 +159,7 @@ class MesoInception4():
         return func
 
     def init_model(self):
-        x = Input(shape=(256, 256, 3))
+        x = Input(shape=(constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3))
 
         x1 = self.InceptionLayer(1, 4, 4, 2)(x)
         x1 = BatchNormalization()(x1)

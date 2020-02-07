@@ -23,10 +23,10 @@ FEAT_SHAPE = (224, 224, 3)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
-  # Restrict TensorFlow to only use the first GPU
+  # Restrict TensorFlow to only use the last GPU
   try:
-    tf.config.experimental.set_visible_devices(gpus[3], 'GPU')
-    tf.config.experimental.set_memory_growth(gpus[3], True)
+    tf.config.experimental.set_visible_devices(gpus[-1], 'GPU')
+    tf.config.experimental.set_memory_growth(gpus[-1], True)
     logical_gpus = tf.config.experimental.list_logical_devices('GPU')
     print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
   except RuntimeError as e:
@@ -38,48 +38,28 @@ def fraction_positives(y_true, y_pred):
     return tf.keras.backend.mean(y_true)
 
 
-def read_file(file_path):
-    
-    names = []
-    labels = []
-    samples = []
-    masks = []
-    
-    with open(file_path, 'rb') as f_p:
-        data = pickle.load(f_p)
+def predict_dataset(file_pattern):
 
-        for key in data.keys():
-            label = data[key][0]
+    file_list = tf.data.Dataset.list_files(file_pattern)
+    dataset = tf.data.TFRecordDataset(filenames=file_list, buffer_size=None, num_parallel_reads=4)
 
-            feat_shape = data[key][1][0].shape
-            my_seq_len = len(data[key][1])
-            data_seq_len = min(my_seq_len, SEQ_LEN)
-            sample = np.zeros((SEQ_LEN,) + feat_shape, dtype=np.float32)
-            # mask = np.zeros(SEQ_LEN, dtype=np.float32)
-            mask = np.zeros(SEQ_LEN, dtype=np.float32)
-            for indx in range(data_seq_len):
-                # NOTE mesonet seems to work with [0, 1]
-                sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
-                # sample[indx] = data[key][1][indx].astype(np.float32) / 255.0
-                mask[indx] = 1.0
-            
-            # print(file_path, len(samples))
-            names.append(key)
-            samples.append(sample)
-            masks.append(mask)
-            labels.append(label)
+    feature_description = {
+        'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
+        'name': tf.io.FixedLenFeature([], tf.string, default_value=''),
+        'sample': tf.io.FixedLenFeature((SEQ_LEN,) + FEAT_SHAPE, tf.float32),
+        'mask': tf.io.FixedLenFeature([SEQ_LEN], tf.float32),
+    }
 
-            # save_sample_img(key+'_o', 0, sample)
-            # save_sample_img(key+'_f', 0, sample_f)
-        
-        del data
-    # NOTE if one sample doesn't have enough frames Keras will error out here with 'assign a sequence'
-    npsamples = np.array(samples, dtype=np.float32)
-    npmasks = np.array(masks, dtype=np.float32)
-    nplabels = np.array(labels, dtype=np.int32)
+    def _parse_function(example_proto):
+        example = tf.io.parse_single_example(example_proto, feature_description)
+        sample = (example['sample'] + 1.0) / 2
+        sample = tf.image.resize(sample, (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH))
 
-    print('file {} Shape samples {}, labels {}'.format(file_path, npsamples.shape, nplabels.shape))
-    return names, npsamples, npmasks, nplabels
+        return {'input_1': sample, 'input_2': example['mask']}, example['name'], example['label']
+
+    dataset = dataset.map(map_func=_parse_function, num_parallel_calls=4)
+
+    return dataset
 
 
 # TODO break these out
@@ -133,7 +113,7 @@ class MesoInception4():
         return func
     
     def init_model(self):
-        x = Input(shape = (256, 256, 3))
+        x = Input(shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3))
         
         x1 = self.InceptionLayer(1, 4, 4, 2)(x)
         x1 = BatchNormalization()(x1)
@@ -161,45 +141,33 @@ class MesoInception4():
         return Model(inputs = x, outputs = y)
 
 
-def create_model(input_shape):
-
-    input_layer = Input(shape=input_shape)
-    input_mask = Input(shape=(input_shape[0]))
+def create_meso_model(input_shape):
 
     classifier = MesoInception4()
-    classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
-    for layer in classifier.model.layers:
-        if layer.name == 'max_pooling2d_3':
-            output = layer.output
-    feature_extractor = Model(inputs=classifier.model.input, outputs=output)
-    for layer in feature_extractor.layers:
-        layer.trainable = False
 
-    net = TimeDistributed(feature_extractor)(input_layer)
-    net = TimeDistributed(Flatten())(net)
-    net = Bidirectional(GRU(256, return_sequences=True))(net, mask=input_mask)
-    net = SeqWeightedAttention()(net, mask=input_mask)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.001),
-        bias_initializer=tf.keras.initializers.Constant(np.log([1.5])))(net)
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name, layer.trainable)
 
-    model = Model(inputs=[input_layer, input_mask], outputs=out)
-
-    return model
-
+    return classifier.model
 
 if __name__ == '__main__':
 
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pkl', type=str)
+    parser.add_argument('--tfrec', type=str, default=None)
+    parser.add_argument('--imgs', type=str, default=None)
     parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--weights', type=str, default=None)
+    parser.add_argument('--save', type=str, default=None)
     args = parser.parse_args()
+
+    assert args.model is not None or args.weights is not None
+    assert args.tfrec is not None or args.imgs is not None 
 
     custom_objs = {
         'fraction_positives':fraction_positives,
-        'SeqWeightedAttention':SeqWeightedAttention,
+        # 'SeqWeightedAttention':SeqWeightedAttention,
     }
 
     if args.model is not None:
@@ -208,11 +176,12 @@ if __name__ == '__main__':
         strategy = tf.distribute.MirroredStrategy()
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
         with strategy.scope():
-            model = create_model((SEQ_LEN,) + FEAT_SHAPE)
+            model = create_meso_model((SEQ_LEN,) + FEAT_SHAPE)
             model.load_weights(args.weights)
             compile_model(model)
+        if args.save is not None:
             model_file, _ = os.path.splitext(args.weights)
-        model.save(model_file + '_saved_model.h5')
+            model.save(model_file + '_saved_model.h5')
     
     print(model.summary())
 
@@ -226,21 +195,25 @@ if __name__ == '__main__':
     predictions = []
     truths = []
     saved = []
-    pkl_files = glob.glob(args.pkl)
-    for pkl_file in tqdm.tqdm(pkl_files):
-        print('Predicting on samples from {}'.format(pkl_file))
-        names, npsamples, npmasks, nplabels = read_file(pkl_file)
-        preds = model.predict([npsamples, npmasks], verbose=1, batch_size=8)
-        # print(preds)
-        predictions.extend(preds)
-        saved.extend(zip(names, preds))
-        truths.extend(nplabels)
-        del npsamples, npmasks
-        gc.collect()
+
+    if args.tfrec is not None:
+        dataset = predict_dataset(args.tfrec).take(10)
+        for elem in dataset:
+            vid = elem[0]['input_1']
+            mask = elem[0]['input_2'].numpy()
+            preds = model.predict(vid).flatten()
+            preds *= mask
+            pred = preds.mean()
+            predictions.append(pred)
+            truths.append(elem[2].numpy())
+            saved.append([elem[1].numpy(), pred])
+
+    print(saved)
     if len(predictions) > 0:
         print('Log loss on predictions: {}'.format(log_loss(truths, predictions, labels=[0, 1])))
         constants.save_predictions(saved)
     else:
         print('No predictions, check input.')
+
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
