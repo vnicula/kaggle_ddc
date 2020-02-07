@@ -197,8 +197,8 @@ if __name__ == '__main__':
     saved = []
 
     if args.tfrec is not None:
-        dataset = predict_dataset(args.tfrec).take(10)
-        for elem in dataset:
+        dataset = predict_dataset(args.tfrec)
+        for elem in tqdm.tqdm(dataset):
             vid = elem[0]['input_1']
             mask = elem[0]['input_2'].numpy()
             preds = model.predict(vid).flatten()
@@ -208,7 +208,7 @@ if __name__ == '__main__':
             truths.append(elem[2].numpy())
             saved.append([elem[1].numpy(), pred])
 
-    print(saved)
+    # print(saved)
     if len(predictions) > 0:
         print('Log loss on predictions: {}'.format(log_loss(truths, predictions, labels=[0, 1])))
         constants.save_predictions(saved)

@@ -40,6 +40,8 @@ if __name__ == '__main__':
     meta_df = read_metadata(args.meta).transpose()
     submission_df = read_submission(args.submission)
     submission_df.rename(columns={'label':'score'}, inplace=True)
+    
+    # submission_df['filename'] = submission_df['filename'].apply(lambda x: x[2:-1])
 
     merged_df = pd.merge(submission_df, meta_df, left_on='filename', right_index=True, how='inner')
     print(set(submission_df.filename)-set(merged_df.filename))
