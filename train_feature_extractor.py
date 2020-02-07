@@ -55,7 +55,7 @@ def decode_img(img):
     # img = tf.cast(img, tf.float32)
     
     # resize the image to the desired size.
-    img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
+    # img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
     return img
 
 
@@ -174,7 +174,8 @@ def compile_model(model, mode, lr):
 
 def create_meso_model(input_shape, mode):
 
-    classifier = featx.MesoInception4()
+    # classifier = featx.MesoInception4()
+    classifier = featx.MesoInception5(width=2)
 
     if mode == 'train':
         print('\nFreezing all conv Meso layers!')
