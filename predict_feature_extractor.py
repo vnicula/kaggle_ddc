@@ -201,12 +201,13 @@ if __name__ == '__main__':
         for elem in tqdm.tqdm(dataset):
             vid = elem[0]['input_1']
             mask = elem[0]['input_2'].numpy()
+            name = str(elem[1].numpy(), 'utf-8')
             preds = model.predict(vid).flatten()
             preds *= mask
             pred = preds.mean()
             predictions.append(pred)
             truths.append(elem[2].numpy())
-            saved.append([elem[1].numpy(), pred])
+            saved.append([name, pred])
 
     # print(saved)
     if len(predictions) > 0:

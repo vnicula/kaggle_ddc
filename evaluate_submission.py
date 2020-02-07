@@ -1,8 +1,8 @@
 import argparse
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pickle
 
 from sklearn.metrics import log_loss
 from sklearn.linear_model import LogisticRegression
@@ -41,10 +41,12 @@ if __name__ == '__main__':
     submission_df = read_submission(args.submission)
     submission_df.rename(columns={'label':'score'}, inplace=True)
     
+    # TODO: check fix for bug in predict_feature_extractor.py which doesn't decode b'str' to str.
     # submission_df['filename'] = submission_df['filename'].apply(lambda x: x[2:-1])
 
     merged_df = pd.merge(submission_df, meta_df, left_on='filename', right_index=True, how='inner')
     print(set(submission_df.filename)-set(merged_df.filename))
+    #TODO do something with flipped _f samples from tfrecs
     assert len(merged_df) == len(submission_df)
     merged_df.fillna({'score':0.5}, inplace=True)
     merged_df['binary_label'] = (merged_df['label'] == 'FAKE').astype(int)
@@ -84,14 +86,16 @@ if __name__ == '__main__':
     
     print('Average logistic calibrated log loss: {}.'.format(np.mean(cv_log_loss_logistic)))
 
-    # Fit on all data
+    # Fit on all data and save
     lr.fit(X.reshape( -1, 1 ), y)
-    X_calibrated = lr.predict_proba(X.reshape( -1, 1 ))[:,1]
+    filename = 'score_calibration.pkl'
+    joblib.dump(lr, filename)
+    
+    clf = joblib.load(filename)
+    X_calibrated = clf.predict_proba(X.reshape( -1, 1 ))[:,1]
     calibrated_log_loss = log_loss(y, X_calibrated)
     print('Platt calibrated log loss: {}.'.format(calibrated_log_loss))
 
-    filename = 'score_calibration.pkl'
-    pickle.dump(lr, open(filename, 'wb'))
     merged_df['calibrated_score'] = X_calibrated
     
     merged_df[merged_df['label']=='REAL']['score'].hist(bins=100, label='REAL', alpha=0.5)
