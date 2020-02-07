@@ -35,6 +35,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--submission', type=str)
     parser.add_argument('--meta', type=str)
+    parser.add_argument('--save', type=str, default=None)
     args = parser.parse_args()
 
     meta_df = read_metadata(args.meta).transpose()
@@ -88,11 +89,13 @@ if __name__ == '__main__':
 
     # Fit on all data and save
     lr.fit(X.reshape( -1, 1 ), y)
-    filename = 'score_calibration.pkl'
-    joblib.dump(lr, filename)
-    
-    clf = joblib.load(filename)
-    X_calibrated = clf.predict_proba(X.reshape( -1, 1 ))[:,1]
+
+    if args.save is not None:
+        filename = 'score_calibration.pkl'
+        joblib.dump(lr, filename)    
+        lr = joblib.load(filename)
+
+    X_calibrated = lr.predict_proba(X.reshape( -1, 1 ))[:,1]
     calibrated_log_loss = log_loss(y, X_calibrated)
     print('Platt calibrated log loss: {}.'.format(calibrated_log_loss))
 

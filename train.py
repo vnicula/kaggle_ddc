@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import argparse
 import cv2
+import feature_extractor_models as featx
 import math
 import matplotlib.pyplot as plt
 import numpy as np
@@ -140,59 +141,6 @@ def get_simple_feature(face):
 def get_image_feature(face):
     # I think this is what preprocess input does with 'tf' mode
     return (face.astype(np.float32) / 127.5) - 1.0
-
-
-class MesoInception4():
-    def __init__(self, learning_rate = 0.001):
-        self.model = self.init_model()
-        # optimizer = Adam(lr = learning_rate)
-        # self.model.compile(optimizer = optimizer, loss = 'mean_squared_error', metrics = ['accuracy'])
-    
-    def InceptionLayer(self, a, b, c, d):
-        def func(x):
-            x1 = Conv2D(a, (1, 1), padding='same', activation='relu')(x)
-            
-            x2 = Conv2D(b, (1, 1), padding='same', activation='relu')(x)
-            x2 = Conv2D(b, (3, 3), padding='same', activation='relu')(x2)
-            
-            x3 = Conv2D(c, (1, 1), padding='same', activation='relu')(x)
-            x3 = Conv2D(c, (3, 3), dilation_rate = 2, strides = 1, padding='same', activation='relu')(x3)
-            
-            x4 = Conv2D(d, (1, 1), padding='same', activation='relu')(x)
-            x4 = Conv2D(d, (3, 3), dilation_rate = 3, strides = 1, padding='same', activation='relu')(x4)
-
-            y = Concatenate(axis = -1)([x1, x2, x3, x4])
-            
-            return y
-        return func
-    
-    def init_model(self):
-        x = Input(shape = (256, 256, 3))
-        
-        x1 = self.InceptionLayer(1, 4, 4, 2)(x)
-        x1 = BatchNormalization()(x1)
-        x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
-        
-        x2 = self.InceptionLayer(2, 4, 4, 2)(x1)
-        x2 = BatchNormalization()(x2)
-        x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
-        
-        x3 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x2)
-        x3 = BatchNormalization()(x3)
-        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
-        
-        x4 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x3)
-        x4 = BatchNormalization()(x4)
-        x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
-        
-        y = Flatten()(x4)
-        y = Dropout(0.5)(y)
-        y = Dense(16)(y)
-        y = LeakyReLU(alpha=0.1)(y)
-        y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid')(y)
-
-        return Model(inputs = x, outputs = y)
 
 
 class CosineAnnealingScheduler(tf.keras.callbacks.Callback):
@@ -524,12 +472,16 @@ def create_model(input_shape):
     input_mask = Input(shape=(input_shape[0]))
     # reshape = Reshape([224, 224, 3])(input_layer)
 
-    classifier = MesoInception4()
+    classifier = featx.MesoInception4()
     # print(classifier.model.summary())
-    classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
-    for layer in classifier.model.layers:
+    # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
+    classifier.model.load_weights('best_meso_featx_weights.h5')
+
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name, layer.trainable)
         if layer.name == 'max_pooling2d_3':
             output = layer.output
+            print('output set to {} max_pooling2d_3'.format())
     feature_extractor = Model(inputs=classifier.model.input, outputs=output)
 
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
