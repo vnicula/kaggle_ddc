@@ -85,32 +85,32 @@ class MesoInception5():
     def init_model(self):
         x = Input(shape = (224, 224, 3))
         
-        x1 = self.InceptionLayer(self.width, 2*self.width, 2*self.width, self.width)(x)
+        x1 = self.InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
         x1 = BatchNormalization()(x1)
         x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
         
-        x2 = self.InceptionLayer(2*self.width, 4*self.width, 4*self.width, 2*self.width)(x1)
+        x2 = self.InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x1)
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
         
-        x3 = self.InceptionLayer(4*self.width, 8*self.width, 8*self.width, 4*self.width)(x2)
+        x3 = self.InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x2)
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = Conv2D(4*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x3)
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
         
-        x5 = Conv2D(8*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x5 = Conv2D(128*self.width, (5, 5), padding='same', activation = 'relu')(x4)
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
         
         y = Flatten()(x5)
         y = Dropout(0.5)(y)
-        y = Dense(16*self.width)(y)
+        y = Dense(32*self.width)(y)
         y = LeakyReLU(alpha=0.1)(y)
-        # y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid')(y)
+        y = Dropout(0.5)(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tensorflow.keras.regularizers.l2(0.002))(y)
 
         return Model(inputs = x, outputs = y)
 
