@@ -53,7 +53,7 @@ def predict_dataset(file_pattern):
     def _parse_function(example_proto):
         example = tf.io.parse_single_example(example_proto, feature_description)
         sample = (example['sample'] + 1.0) / 2
-        sample = tf.image.resize(sample, (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH))
+        # sample = tf.image.resize(sample, (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH))
 
         return {'input_1': sample, 'input_2': example['mask']}, example['name'], example['label']
 
@@ -141,9 +141,66 @@ class MesoInception4():
         return Model(inputs = x, outputs = y)
 
 
+class MesoInception5():
+    def __init__(self, width):
+        self.width = width
+        self.model = self.init_model()
+    
+    def InceptionLayer(self, a, b, c, d):
+        def func(x):
+            x1 = Conv2D(a, (1, 1), padding='same', activation='relu')(x)
+            
+            x2 = Conv2D(b, (1, 1), padding='same', activation='relu')(x)
+            x2 = Conv2D(b, (3, 3), padding='same', activation='relu')(x2)
+            
+            x3 = Conv2D(c, (1, 1), padding='same', activation='relu')(x)
+            x3 = Conv2D(c, (3, 3), dilation_rate = 2, strides = 1, padding='same', activation='relu')(x3)
+            
+            x4 = Conv2D(d, (1, 1), padding='same', activation='relu')(x)
+            x4 = Conv2D(d, (3, 3), dilation_rate = 3, strides = 1, padding='same', activation='relu')(x4)
+
+            y = Concatenate(axis = -1)([x1, x2, x3, x4])
+            
+            return y
+        return func
+    
+    def init_model(self):
+        x = Input(shape = (224, 224, 3))
+        
+        x1 = self.InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
+        x1 = BatchNormalization()(x1)
+        x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
+        
+        x2 = self.InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x1)
+        x2 = BatchNormalization()(x2)
+        x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
+        
+        x3 = self.InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x2)
+        x3 = BatchNormalization()(x3)
+        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
+
+        x4 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = BatchNormalization()(x4)
+        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
+        
+        x5 = Conv2D(128*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x5 = BatchNormalization()(x5)
+        x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
+        
+        y = Flatten()(x5)
+        y = Dropout(0.5)(y)
+        #TODO investigate num units for this dense layer.
+        y = Dense(32*self.width)(y)
+        y = LeakyReLU(alpha=0.1)(y)
+        y = Dropout(0.5)(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.005))(y)
+
+        return Model(inputs = x, outputs = y)
+
+
 def create_meso_model(input_shape):
 
-    classifier = MesoInception4()
+    classifier = MesoInception5(width=2)
 
     for i, layer in enumerate(classifier.model.layers):
         print(i, layer.name, layer.trainable)
@@ -173,12 +230,13 @@ if __name__ == '__main__':
     if args.model is not None:
         model = tf.keras.models.load_model(args.model, custom_objects=custom_objs)
     elif args.weights is not None:
-        strategy = tf.distribute.MirroredStrategy()
-        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-        with strategy.scope():
-            model = create_meso_model((SEQ_LEN,) + FEAT_SHAPE)
-            model.load_weights(args.weights)
-            compile_model(model)
+        # TODO TF complains about function tracing when distributing predictions on mirrored.
+        # strategy = tf.distribute.MirroredStrategy()
+        # print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+        # with strategy.scope():
+        model = create_meso_model((SEQ_LEN,) + FEAT_SHAPE)
+        model.load_weights(args.weights)
+        compile_model(model)
         if args.save is not None:
             model_file, _ = os.path.splitext(args.weights)
             model.save(model_file + '_saved_model.h5')

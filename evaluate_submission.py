@@ -48,7 +48,7 @@ if __name__ == '__main__':
     merged_df = pd.merge(submission_df, meta_df, left_on='filename', right_index=True, how='inner')
     print(set(submission_df.filename)-set(merged_df.filename))
     #TODO do something with flipped _f samples from tfrecs
-    assert len(merged_df) == len(submission_df)
+    # assert len(merged_df) == len(submission_df)
     merged_df.fillna({'score':0.5}, inplace=True)
     merged_df['binary_label'] = (merged_df['label'] == 'FAKE').astype(int)
     merged_df.to_csv('evaluated_submission.tsv')
