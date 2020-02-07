@@ -175,7 +175,7 @@ def compile_model(model, mode, lr):
 def create_meso_model(input_shape, mode):
 
     # classifier = featx.MesoInception4()
-    classifier = featx.MesoInception5(width=2)
+    classifier = featx.MesoInception5(width=1)
 
     if mode == 'train':
         print('\nFreezing all conv Meso layers!')
@@ -341,7 +341,7 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.55, 1: 0.45}
+        class_weight={0: 0.65, 1: 0.35}
         # class_weight=[0.99, 0.01]
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
@@ -361,7 +361,7 @@ if __name__ == '__main__':
             model_file_name = args.load + '_' + model_file_name
         model.save(model_file_name)
 
-        new_model = tf.keras.models.load_model(model_file_name)
+        new_model = tf.keras.models.load_model(model_file_name, custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()

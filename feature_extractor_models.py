@@ -107,10 +107,11 @@ class MesoInception5():
         
         y = Flatten()(x5)
         y = Dropout(0.5)(y)
-        y = Dense(32*self.width)(y)
+        #TODO investigate num units for this dense layer.
+        y = Dense(64*self.width)(y)
         y = LeakyReLU(alpha=0.1)(y)
         y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tensorflow.keras.regularizers.l2(0.002))(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tensorflow.keras.regularizers.l2(0.005))(y)
 
         return Model(inputs = x, outputs = y)
 
