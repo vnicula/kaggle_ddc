@@ -410,9 +410,13 @@ if __name__ == '__main__':
         model.evaluate(eval_dataset)
 
     if args.save is not None:
-        model.save(args.load + '_' + args.mode + '_full_model.h5')
-        # new_model = tf.keras.models.load_model('my_model')
-        # new_model.summary()
+        model_file_name = args.mode + '_full_model.h5'
+        if args.load is not None:
+            model_file_name = args.load + '_' + model_file_name
+        model.save(model_file_name)
+
+        new_model = tf.keras.models.load_model(model_file_name)
+        new_model.summary()
 
     t1 = time.time()
 
