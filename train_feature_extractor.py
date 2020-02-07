@@ -388,7 +388,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=50,
+                patience=40,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
