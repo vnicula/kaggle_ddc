@@ -18,9 +18,6 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 
-SEQ_LEN = 30
-FEAT_SHAPE = (224, 224, 3)
-
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
   # Restrict TensorFlow to only use the last GPU
@@ -46,8 +43,8 @@ def predict_dataset(file_pattern):
     feature_description = {
         'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
         'name': tf.io.FixedLenFeature([], tf.string, default_value=''),
-        'sample': tf.io.FixedLenFeature((SEQ_LEN,) + FEAT_SHAPE, tf.float32),
-        'mask': tf.io.FixedLenFeature([SEQ_LEN], tf.float32),
+        'sample': tf.io.FixedLenFeature((constants.SEQ_LEN,) + constants.FEAT_SHAPE, tf.float32),
+        'mask': tf.io.FixedLenFeature([constants.SEQ_LEN], tf.float32),
     }
 
     def _parse_function(example_proto):
