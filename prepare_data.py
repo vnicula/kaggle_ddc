@@ -127,7 +127,8 @@ def run(input_dir, slice_size, first_slice, keep_tracks):
     dataset_slice = {}
     slices = first_slice
 
-    with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
+    # with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
+    with open('all_metadata.json') as json_file:
         label_data = json.load(json_file)
 
     for i in tqdm.tqdm(range(len(f_list))):

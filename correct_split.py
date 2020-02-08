@@ -1,30 +1,45 @@
 import pandas as pd
 
-df = pd.read_csv('face_clusters.csv')
-df.drop('embedding', axis=1, inplace=True)
-df.to_csv('face_clusters_small.csv')
+def merge_chunks(sets):
+	merged = {}
+	all_items = list(sets.items())
+	for i, (key, val) in enumerate(all_items):
+		nearest = None
+		max_common = 0
+		for j in range(i+1, len(all_items)):
+			ikey = all_items[j][0]
+			ival = all_items[j][1]
+			common = len(val.intersection(ival))
+			if common > max_common:
+				nearest = ikey
+				max_common = common
+		if max_common > 0:
+			new_key = set(key).union(nearest)
+			# print(key, new_key)
+			merged[tuple(list(new_key))] = val.union(sets[nearest])
+		else:
+			merged[key] = val
+	return merged
+
+df = pd.read_csv('face_clusters_small.csv')
+# df.drop('embedding', axis=1, inplace=True)
+# df.to_csv('face_clusters_small.csv')
 
 clc = dict()
 for chunk, cluster in zip(df.chunk, df.cluster):
-	if cluster in clc:
-		clc[cluster].append(chunk)
+	chunk = tuple((chunk,))
+	if chunk in clc:
+		clc[chunk].add(cluster)
 	else:
-		clc[cluster] = [chunk]
+		clc[chunk] = set([cluster])
 
-changed = True
-while changed:
+for key, val in clc.items():
+	print('{}: {}'.format(key, val))
 
-	changed = False
-	for cluster, chunks in clc.items():
-		chunks_set = set(chunks)
+merged = clc
+for i in range(50):
+	print('\n\n')
+	merged = merge_chunks(merged)
+	for key, val in merged.items():
+		print('{}: {}'.format(key, val))
 
-		for icluster, ichunks in clc.items():
-			if cluster != icluster and len(chunks_set.intersection(ichunks)) > 0:
-				# aggregate values and delete second key
-				clc[cluster] = list(set(clc[cluster]).union(ichunks))
-				clc[icluster] = []
-				changed=True
-
-for key in clc:
-	if len(clc[key]) > 0:
-		print(key, clc[key])

@@ -97,18 +97,18 @@ class MesoInception5():
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x3)
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
         
-        x5 = Conv2D(128*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x5 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x4)
         x5 = BatchNormalization()(x5)
-        x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
+        x5 = MaxPooling2D(pool_size=(3, 3), stride=(2, 2), padding='valid')(x5)
         
         y = Flatten()(x5)
         y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
-        y = Dense(64*self.width)(y)
+        y = Dense(32*self.width)(y)
         y = LeakyReLU(alpha=0.1)(y)
         y = Dropout(0.5)(y)
         y = Dense(1, activation = 'sigmoid', kernel_regularizer=tensorflow.keras.regularizers.l2(0.005))(y)

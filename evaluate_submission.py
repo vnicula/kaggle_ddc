@@ -17,11 +17,14 @@ def read_submission(csv_file):
     return submission_df
 
 def compute_clip_range(truths, preds):
-
+    NUM_POINTS = 201
     best_range = (0.0, 1.0)
     best_loss = log_loss(truths, preds)
-    for a_min in np.linspace(0.0, 0.99, 50):
-        for a_max in np.linspace(a_min, 1.0, 50):
+    cutpoints = np.linspace(0.0, 1.0, NUM_POINTS)
+    for i in range(NUM_POINTS - 1):
+        a_min = cutpoints[i]
+        for j in range(i+1, NUM_POINTS):
+            a_max = cutpoints[j]
             clip_preds = np.clip(preds, a_min, a_max)
             lloss = log_loss(truths, clip_preds)
             if lloss < best_loss:
@@ -43,7 +46,7 @@ if __name__ == '__main__':
     submission_df.rename(columns={'label':'score'}, inplace=True)
     
     # TODO: check fix for bug in predict_feature_extractor.py which doesn't decode b'str' to str.
-    # submission_df['filename'] = submission_df['filename'].apply(lambda x: x[2:-1])
+    # submission_df['filename'] = submission_df['filename'].apply(lambda x: x[1:])
 
     merged_df = pd.merge(submission_df, meta_df, left_on='filename', right_index=True, how='inner')
     print(set(submission_df.filename)-set(merged_df.filename))
@@ -53,9 +56,10 @@ if __name__ == '__main__':
     merged_df['binary_label'] = (merged_df['label'] == 'FAKE').astype(int)
     merged_df.to_csv('evaluated_submission.tsv')
 
-    X = merged_df['score'].values
+    X = merged_df['score'].values.reshape(-1, 1)
     y = merged_df['binary_label'].values
 
+    # print(y, X)
     nll = log_loss(y, X)
     # print(*zip(merged_df['binary_label'], merged_df['score']))
     print('Log loss on submission as is: {}'.format(nll))
@@ -78,8 +82,10 @@ if __name__ == '__main__':
         test_log_loss = log_loss(y_test, X_test_clipped)
         print('Fold {} test clip log loss: {}, with clip range: {}'.format(fold, test_log_loss, best_range))
 
-        lr.fit(X_train.reshape( -1, 1 ), y_train)
-        X_test_calibrated = lr.predict_proba(X_test.reshape( -1, 1 ))[:,1]
+        # lr.fit(X_train.reshape( -1, 1 ), y_train)
+        lr.fit(X_train, y_train)
+        # X_test_calibrated = lr.predict_proba(X_test.reshape( -1, 1 ))[:,1]
+        X_test_calibrated = lr.predict_proba(X_test)[:,1]
         test_log_loss = log_loss(y_test, X_test_calibrated)
         print('Fold {} test logistic log loss: {}.'.format(fold, test_log_loss))
         cv_log_loss_logistic.append(test_log_loss)
@@ -88,14 +94,16 @@ if __name__ == '__main__':
     print('Average logistic calibrated log loss: {}.'.format(np.mean(cv_log_loss_logistic)))
 
     # Fit on all data and save
-    lr.fit(X.reshape( -1, 1 ), y)
-
+    # lr.fit(X.reshape( -1, 1 ), y)
+    lr.fit(X, y)
+    
     if args.save is not None:
         filename = 'score_calibration.pkl'
         joblib.dump(lr, filename)    
         lr = joblib.load(filename)
 
-    X_calibrated = lr.predict_proba(X.reshape( -1, 1 ))[:,1]
+    # X_calibrated = lr.predict_proba(X.reshape( -1, 1 ))[:,1]
+    X_calibrated = lr.predict_proba(X)[:,1]
     calibrated_log_loss = log_loss(y, X_calibrated)
     print('Platt calibrated log loss: {}.'.format(calibrated_log_loss))
 
