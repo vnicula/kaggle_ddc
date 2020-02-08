@@ -97,15 +97,19 @@ class MesoInception5():
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = self.InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x3)
         x4 = BatchNormalization()(x4)
-        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
-        
-        x5 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)        
+
+        x5 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x4)
         x5 = BatchNormalization()(x5)
-        x5 = MaxPooling2D(pool_size=(3, 3), stride=(2, 2), padding='valid')(x5)
+        x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
         
-        y = Flatten()(x5)
+        x6 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x5)
+        x6 = BatchNormalization()(x6)
+        x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
+        
+        y = Flatten()(x6)
         y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
         y = Dense(32*self.width)(y)
