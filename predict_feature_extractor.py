@@ -164,40 +164,44 @@ class MesoInception5():
     def init_model(self):
         x = Input(shape = (224, 224, 3))
         
-        x1 = self.InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
+        x1 = self.InceptionLayer(1*self.width, 2*self.width, 2*self.width, 1*self.width)(x)
         x1 = BatchNormalization()(x1)
         x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
         
-        x2 = self.InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x1)
+        x2 = self.InceptionLayer(2*self.width, 4*self.width, 4*self.width, 2*self.width)(x1)
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
         
-        x3 = self.InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x2)
+        x3 = self.InceptionLayer(2*self.width, 4*self.width, 4*self.width, 2*self.width)(x2)
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = self.InceptionLayer(4*self.width, 8*self.width, 8*self.width, 4*self.width)(x3)
         x4 = BatchNormalization()(x4)
-        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
-        
-        x5 = Conv2D(128*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)        
+
+        x5 = self.InceptionLayer(8*self.width, 16*self.width, 16*self.width, 8*self.width)(x4)
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
         
-        y = Flatten()(x5)
+        x6 = Conv2D(64*self.width, (3, 3), padding='same', activation = 'relu')(x5)
+        x6 = BatchNormalization()(x6)
+        x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
+        
+        y = Flatten()(x6)
         y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
         y = Dense(32*self.width)(y)
         y = LeakyReLU(alpha=0.1)(y)
         y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.005))(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(y)
 
         return Model(inputs = x, outputs = y)
 
 
 def create_meso_model(input_shape):
 
-    classifier = MesoInception5(width=2)
+    classifier = MesoInception5(width=1)
 
     for i, layer in enumerate(classifier.model.layers):
         print(i, layer.name, layer.trainable)
@@ -231,7 +235,7 @@ if __name__ == '__main__':
         # strategy = tf.distribute.MirroredStrategy()
         # print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
         # with strategy.scope():
-        model = create_meso_model((SEQ_LEN,) + FEAT_SHAPE)
+        model = create_meso_model((constants.SEQ_LEN,) + constants.FEAT_SHAPE)
         model.load_weights(args.weights)
         compile_model(model)
         if args.save is not None:

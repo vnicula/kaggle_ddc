@@ -164,8 +164,10 @@ def compile_model(model, mode, lr):
         # lr_metric,
     ]
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
-    # my_loss = binary_focal_loss(alpha=0.7)
+    my_loss = tf.keras.losses.BinaryCrossentropy(
+        # label_smoothing=0.025
+    )
+    # my_loss = binary_focal_loss(alpha=0.57)
     # my_loss = 'mean_squared_error'
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
@@ -331,17 +333,17 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=40,
+                patience=30,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 factor=0.96, patience=4, min_lr=5e-4, verbose=1, mode='min'),
+                                                 factor=0.96, patience=3, min_lr=5e-4, verbose=1, mode='min'),
             # lr_callback,
         ]
 
-        class_weight={0: 0.65, 1: 0.35}
+        class_weight={0: 0.575, 1: 0.425}
         # class_weight=[0.99, 0.01]
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
@@ -356,7 +358,7 @@ if __name__ == '__main__':
         model.evaluate(eval_dataset)
 
     if args.save is not None:
-        model_file_name = args.mode + '_full_model.h5'
+        model_file_name = args.mode + '_featx_full_model.h5'
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
         model.save(model_file_name)
