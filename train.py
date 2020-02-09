@@ -141,7 +141,9 @@ def compile_model(model, mode, lr):
         METRICS.append(fraction_positives)
         my_loss = binary_focal_loss(alpha=0.7)
     else:
-        my_loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.025)
+        my_loss = tf.keras.losses.BinaryCrossentropy(
+            # label_smoothing=0.025
+        )
 
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
@@ -164,7 +166,7 @@ def create_model(input_shape):
     classifier = featx.MesoInception5(width=1)
     # print(classifier.model.summary())
     # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
-    classifier.model.load_weights('meso5_w1_froms_weights_11.h5')
+    classifier.model.load_weights('one_model_weights.h5')
 
     for i, layer in enumerate(classifier.model.layers):
         print(i, layer.name, layer.trainable)
@@ -285,7 +287,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--weights', type=str, default=None)
     parser.add_argument('--save', type=str, default='true')
-    parser.add_argument('--lr', type=float, default=0.025)
+    parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--batch_size', type=int, default=64)
     args = parser.parse_args()
  
@@ -340,7 +342,7 @@ if __name__ == '__main__':
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
-                factor=0.96, patience=1, min_lr=5e-6, verbose=1, mode='min')
+                factor=0.96, patience=2, min_lr=5e-6, verbose=1, mode='min')
         ]
         
         class_weight={0: 0.6, 1: 0.4}
@@ -351,14 +353,18 @@ if __name__ == '__main__':
         save_loss(history, 'final_model')
 
     elif args.mode == 'predict':
-        # model = create_model(in_shape)
-        if args.weights is not None:
-            print('Loading model and weights from: ', args.weights)
-            model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
-            # model.load_weights(args.weights)
-        else:
-            raise ValueError('Predict mode needs --weights argument.')
-        # compile_model(model, args.mode, args.lr)
+        strategy = tf.distribute.MirroredStrategy()
+        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+
+        with strategy.scope():
+            model = create_model(in_shape)
+            if args.weights is not None:
+                print('Loading model and weights from: ', args.weights)
+                # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
+                model.load_weights(args.weights)
+            else:
+                raise ValueError('Predict mode needs --weights argument.')
+            compile_model(model, args.mode, args.lr)
 
         predict_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
         predict_dataset = predict_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
