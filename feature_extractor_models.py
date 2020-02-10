@@ -107,7 +107,8 @@ class MesoInception5():
         
         x6 = Conv2D(64*self.width, (3, 3), padding='same', activation = 'relu')(x5)
         x6 = BatchNormalization()(x6)
-        x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
+        # x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
+        x6 = GlobalAveragePooling2D()(x6)
         
         y = Flatten()(x6)
         y = Dropout(0.5)(y)

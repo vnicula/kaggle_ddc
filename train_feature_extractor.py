@@ -160,9 +160,10 @@ def compile_model(model, mode, lr):
         tf.keras.metrics.AUC(name='auc'),
         # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
         tf.keras.metrics.BinaryCrossentropy(),
-        fraction_positives,
         # lr_metric,
     ]
+    if mode == 'train' or mode == 'tune':
+        METRICS.append(fraction_positives)
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
     my_loss = tf.keras.losses.BinaryCrossentropy(
         # label_smoothing=0.025
@@ -296,7 +297,7 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model = create_mobilenet_model(in_shape, args.mode)
+        # model = create_xception_model(in_shape, args.mode)
         model = create_meso_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
@@ -343,9 +344,9 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.575, 1: 0.425}
+        # class_weight={0: 0.575, 1: 0.425}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
+        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
         
