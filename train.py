@@ -242,15 +242,15 @@ def create_model(input_shape):
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(GRU(128, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
-    net = Bidirectional(GRU(64, return_sequences=True))(net, mask=input_mask)
+    net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    # net = Dropout(0.25)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002),
+    net = Dropout(0.25)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
     # out = Dense(1, activation='sigmoid')(net)
@@ -336,7 +336,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=25,
+                patience=30,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
