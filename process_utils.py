@@ -122,4 +122,27 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
 
     return faces, tracks[:keep_tracks]
 
+
+def detect_faces_no_tracks(detector, images, batch_size, face_size):
+    faces = []
+
+    for lb in np.arange(0, len(images), batch_size):
+        imgs_pil = [Image.fromarray(image) for image in images[lb:lb+batch_size]]
+        frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
+        if (frames_boxes is not None) and (len(frames_boxes) > 0):
+            # print(frames_boxes, frames_confidences)
+            for i in range(len(frames_boxes)):
+                if frames_boxes[i] is not None:
+                    for bbox in frames_boxes[i]:
+                        (x,y,w,h) = (
+                            max(int(bbox[0]) - constants.MARGIN, 0),
+                            max(int(bbox[1]) - constants.MARGIN, 0),
+                            int(bbox[2]-bbox[0]) + 2*constants.MARGIN,
+                            int(bbox[3]-bbox[1]) + 2*constants.MARGIN
+                        )
+                    image = images[i]
+                    face_extract = image[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
+                    face_extract = cv2.resize(face_extract, (face_size, face_size))
+                    faces.append(face_extract)
     
+    return faces

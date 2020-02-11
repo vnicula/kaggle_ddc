@@ -242,14 +242,14 @@ def create_model(input_shape):
     # net = Masking(mask_value = 0.0)(net)
     # net = Bidirectional(GRU(128, return_sequences=True))(net, mask=input_mask)
     # net = SeqSelfAttention(attention_type='additive', attention_activation='sigmoid')(net, mask=input_mask)
-    net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
+    # net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     net = SeqWeightedAttention()(net, mask=input_mask)
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    net = Dropout(0.25)(net)
+    # net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--weights', type=str, default=None)
     parser.add_argument('--save', type=str, default='true')
-    parser.add_argument('--lr', type=float, default=0.02)
+    parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--batch_size', type=int, default=64)
     args = parser.parse_args()
  
