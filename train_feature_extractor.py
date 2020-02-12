@@ -141,9 +141,11 @@ def compile_model(model, mode, lr):
 
     if mode == 'train' or mode == 'eval':
         optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
+        # optimizer = tf.keras.optimizers.RMSProp(lr)  # (lr=0.025)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
-        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        optimizer = tf.keras.optimizers.RMSprop(lr)  # (lr=0.025)
+        # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
@@ -345,8 +347,7 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        # class_weight={0: 0.575, 1: 0.425}
-        # class_weight=[0.99, 0.01]
+        # class_weight={0: 0.547, 1: 0.453}
         history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
