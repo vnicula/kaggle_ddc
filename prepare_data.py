@@ -2,6 +2,7 @@ import argparse
 import constants
 import cv2
 from facenet_pytorch import MTCNN
+import glob
 import json
 import math
 import numpy as np
@@ -14,10 +15,6 @@ import time
 import torch
 import tqdm
 
-
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-print(device)
-detector = MTCNN(device=device, margin=constants.MARGIN, min_face_size=20, post_process=False, keep_all=False, select_largest=False)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -120,37 +117,40 @@ def save_numpy_to_tfrecords(names, samples, masks, labels, filename):
         writer.close()
 
 
-def run(input_dir, slice_size, first_slice, keep_tracks):
+def run(input_dir, from_label, slice_size, first_slice):
 
     f_list = os.listdir(input_dir)
     slice_prefix = os.path.basename(input_dir).split('_')[-1]
     dataset_slice = {}
     slices = first_slice
 
-    # with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
-    with open('all_metadata.json') as json_file:
-        label_data = json.load(json_file)
+    if from_label == 'json':
+        with open('all_metadata.json') as json_file:
+            label_data = json.load(json_file)
+    elif from_label == '0' or from_label == '1':
+        label = int(from_label)
+    else:
+        raise("Label is either json or 0 or 1.")
 
     for i in tqdm.tqdm(range(len(f_list))):
         f_name = f_list[i]
         # Parse video
         f_path = os.path.join(input_dir, f_name)
         file_name = os.path.basename(f_path)
-        
-        print('Now processing: ' + f_path)
         suffix = f_path.split('.')[-1]
 
         if suffix.lower() in ['mp4', 'avi', 'mov']:
             # Parse video
-            label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
-            # label = 0
+            if from_label == 'json':
+                label = 1 if label_data[file_name]['label'] == 'FAKE' else 0
+            keep_tracks = 1 if label == 1 else 3
 
             faces = extract_one_sample_bbox(f_path, label, max_detection_size=constants.MAX_DETECTION_SIZE, 
                 max_frame_count=constants.TRAIN_FRAME_COUNT, face_size=constants.TRAIN_FACE_SIZE, keep_tracks=keep_tracks)
             if len(faces) > 0:
                 for findex, face in enumerate(faces, start=1):
                     dataset_slice[str(findex) + file_name] = (label, face)
-            print('name: {}, faces {}, label {}'.format(file_name, len(faces), label))
+            print('Processed name: {}, faces {}, label {}'.format(f_path, len(faces), label))
         
         if len(dataset_slice) >= slice_size:
             slice_name = os.path.join(input_dir, "%s_%s.tfrec" % (slice_prefix, slices))
@@ -192,10 +192,16 @@ if __name__ == '__main__':
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', type=str)
+    parser.add_argument('--input_dirs', type=str)
+    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--label', type=str, default='json')
     args = parser.parse_args()
 
-    run(args.input_dir, slice_size=256, first_slice=0, keep_tracks=1)
+    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
+        post_process=False, keep_all=True, select_largest=False)
+
+    for input_dir in glob.glob(args.input_dirs):
+        run(input_dir, args.label, slice_size=256, first_slice=0)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))

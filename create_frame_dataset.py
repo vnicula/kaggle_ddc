@@ -163,7 +163,7 @@ if __name__ == '__main__':
         if 'json' == label:
             run(detector, dir, 5)
         else:
-            run_label(detector, dir, 15, label)
+            run_label(detector, dir, 10, label)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))

@@ -91,7 +91,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
                         boxes.append({'bbox': box, 'score':confidence})
                     detections.append(boxes)
     
-    tracks = iou_tracker.track_iou(detections, 0.8, 0.9, 0.1, 10)
+    tracks = iou_tracker.track_iou(detections, 0.8, 0.9, 0.1, constants.MIN_TRACK_FACES)
 
     # Can't use anything since it's multitrack fake
     if label == 1 and len(tracks) > 1:

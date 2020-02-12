@@ -35,6 +35,61 @@ def split_intersection(clc, split_list):
 		common_actors = common_actors.union(clc[chunk].intersection(train_actors))
 
 	return common_actors
+
+
+def cheapest_chunk(clc, split_list):
+	split_actors = set()
+	all_chunks = set(clc.keys())
+	candidate_chunks = all_chunks.difference(split_list)
+
+	for chunk in split_list:
+		split_actors = split_actors.union(clc[chunk])
+
+	the_chunk = None
+
+	min_common_actors = 1000
+	for chunk in candidate_chunks:
+		candidate_split_list = split_list[:]
+		candidate_split_list.append(chunk)
+		n_common_actors = len(split_intersection(clc, candidate_split_list))
+		if n_common_actors < min_common_actors:
+			min_common_actors = n_common_actors
+			the_chunk = chunk
+		
+	common_actors = None
+	common_actors = split_actors.intersection(clc[the_chunk])
+	
+	return the_chunk, common_actors
+
+
+def closest_chunk(clc, split_list):
+	split_actors = set()
+	all_chunks = set(clc.keys())
+	candidate_chunks = all_chunks.difference(split_list)
+
+	for chunk in split_list:
+		split_actors = split_actors.union(clc[chunk])
+
+	the_chunk = None
+	max_common_actors = 0
+	for chunk in candidate_chunks:
+		n_common_actors = len(split_actors.intersection(clc[chunk]))
+		if n_common_actors > max_common_actors:
+			max_common_actors = n_common_actors
+			the_chunk = chunk
+	
+	if the_chunk is None:
+		clcc = dict(clc)
+		for chunk in split_list:
+			del clcc[chunk]
+		sorted_clcc = sorted(clcc.items(), key=lambda t: len(t[1]))
+		the_chunk = sorted_clcc[0][0]
+	
+	common_actors = None
+	if the_chunk is not None:
+		common_actors = split_actors.intersection(clc[the_chunk])
+	
+	return the_chunk, common_actors
 	
 
 if __name__ == '__main__':
@@ -70,18 +125,44 @@ if __name__ == '__main__':
 	common_actors = split_intersection(clc, val_list)
 	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
 	
+	val_list = [0, 1, 12, 32, 42]
+	candidate_chunk, candidate_common = closest_chunk(clc, val_list)
+	print('\nClosest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
 
-	merged = dict()
-	for chunk, cluster in zip(df.chunk, df.cluster):
-		chunk = tuple((chunk,))
-		if chunk in merged:
-			merged[chunk].add(cluster)
-		else:
-			merged[chunk] = set([cluster])
+	val_list.append(candidate_chunk)
+	common_actors = split_intersection(clc, val_list)
+	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
 
-	for i in range(args.n):
-		merged = merge_chunks(merged)
+	val_list = [0]
+	print('\n\n*** Using closest chunk.***\n')
+	for i in range(10):
+		print('Step {}'.format(i))
+		candidate_chunk, candidate_common = closest_chunk(clc, val_list)
+		print('\nClosest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
+		val_list.append(candidate_chunk)
+		common_actors = split_intersection(clc, val_list)
+		print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
 
-	for key, val in merged.items():
-		print('{}: {}'.format(key, val))
+	val_list = [0]
+	print('\n\n*** Using cheapest chunk.***\n')
+	for i in range(10):
+		print('Step {}'.format(i))
+		candidate_chunk, candidate_common = cheapest_chunk(clc, val_list)
+		print('\nClosest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
+		val_list.append(candidate_chunk)
+		common_actors = split_intersection(clc, val_list)
+		print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
+	# merged = dict()
+	# for chunk, cluster in zip(df.chunk, df.cluster):
+	# 	chunk = tuple((chunk,))
+	# 	if chunk in merged:
+	# 		merged[chunk].add(cluster)
+	# 	else:
+	# 		merged[chunk] = set([cluster])
+
+	# for i in range(args.n):
+	# 	merged = merge_chunks(merged)
+
+	# for key, val in merged.items():
+	# 	print('{}: {}'.format(key, val))
 

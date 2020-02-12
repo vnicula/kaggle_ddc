@@ -8,6 +8,7 @@ import os
 import tensorflow as tf
 import time
 
+# from tensorflow.keras.applications.efficientnet import EfficientNetB0
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -358,7 +359,7 @@ if __name__ == '__main__':
         eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
         model.evaluate(eval_dataset)
 
-    if args.save is not None:
+    if args.save == 'true':
         model_file_name = args.mode + '_featx_full_model.h5'
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
