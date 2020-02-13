@@ -18,6 +18,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
+from efficientnet.tfkeras import EfficientNetB0
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -83,6 +84,8 @@ def tfrecords_dataset(input_dir, is_training):
         buffer_size=None, 
         num_parallel_reads=tf.data.experimental.AUTOTUNE
     )
+    if is_training:
+        dataset = dataset.shuffle(buffer_size=1000)
 
     feature_description = {
         'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
@@ -99,7 +102,8 @@ def tfrecords_dataset(input_dir, is_training):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
+    if is_training:
+        dataset = dataset.shuffle(buffer_size=1000)
     return dataset
 
 
@@ -166,21 +170,23 @@ def create_model(input_shape):
     input_mask = Input(shape=(input_shape[0]))
     # reshape = Reshape([224, 224, 3])(input_layer)
 
-    classifier = featx.MesoInception5(width=1)
-    # print(classifier.model.summary())
-    # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
-    classifier.model.load_weights('one_model_weights.h5')
+    # classifier = featx.MesoInception5(width=1)
+    # # print(classifier.model.summary())
+    # # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
+    # classifier.model.load_weights('one_model_weights.h5')
 
-    for i, layer in enumerate(classifier.model.layers):
-        # print(i, layer.name, layer.trainable)
-        if layer.name == 'flatten':
-            output = layer.output
-            print('output set to {}.'.format(layer.name))
+    # for i, layer in enumerate(classifier.model.layers):
+    #     # print(i, layer.name, layer.trainable)
+    #     if layer.name == 'flatten':
+    #         output = layer.output
+    #         print('output set to {}.'.format(layer.name))
 
-    feature_extractor = Model(inputs=classifier.model.input, outputs=output)
+    # feature_extractor = Model(inputs=classifier.model.input, outputs=output)
 
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
+    weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading feature extractor weights from: ', weights)
 
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
@@ -197,7 +203,11 @@ def create_model(input_shape):
     #     input_shape=None, 
     #     pooling='avg'
     # )
-        
+
+    feature_extractor = EfficientNetB0(weights=weights, input_shape=input_shape[-3:], 
+        include_top=False, pooling='avg')
+    
+    feature_extractor.trainable = False
     for i, layer in enumerate(feature_extractor.layers):
         layer.trainable = False
         print(i, layer.name, layer.trainable)

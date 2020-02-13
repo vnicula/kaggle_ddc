@@ -8,7 +8,7 @@ import os
 import tensorflow as tf
 import time
 
-# from tensorflow.keras.applications.efficientnet import EfficientNetB0
+from efficientnet.tfkeras import EfficientNetB0
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -144,7 +144,7 @@ def compile_model(model, mode, lr):
         # optimizer = tf.keras.optimizers.RMSProp(lr)  # (lr=0.025)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr)  # (lr=0.025)
+        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
         # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     # learning_rate=CustomSchedule(D_MODEL)
@@ -238,20 +238,20 @@ def create_mobilenet_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
-    mobilenet_weights = 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+    mobilenet_weights = 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5'
     print('Loading mobilenet weights from: ', mobilenet_weights)
-    base_model = MobileNetV2(weights=mobilenet_weights, alpha = 1.0,
+    base_model = MobileNetV2(weights=mobilenet_weights, alpha = 0.5,
         input_tensor=input_tensor, include_top=False, pooling='avg')
 
     if mode == 'train':
-        # print('\nFreezing all Mobilenet layers!')
-        # for layer in base_model.layers:
-        #     layer.trainable = False
-        print('\nUnfreezing last Mobilenet layers!')
-        for layer in base_model.layers[:152]:
+        print('\nFreezing all Mobilenet layers!')
+        for layer in base_model.layers:
             layer.trainable = False
-        for layer in base_model.layers[152:]:
-            layer.trainable = True
+        # print('\nUnfreezing last Mobilenet layers!')
+        # for layer in base_model.layers[:152]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[152:]:
+        #     layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something mobilenet layers!')
         for layer in base_model.layers[:126]:
@@ -272,12 +272,50 @@ def create_mobilenet_model(input_shape, mode):
     return model
 
 
+def create_efficientnet_model(input_shape, mode):
+
+    input_tensor = Input(shape=input_shape)
+    # create the base pre-trained model
+    efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', efficientnet_weights)
+    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor, 
+        include_top=False, pooling='avg')
+
+    if mode == 'train':
+        print('\nFreezing all EfficientNet layers!')
+        for layer in base_model.layers:
+            layer.trainable = False
+        # print('\nUnfreezing last Mobilenet layers!')
+        # for layer in base_model.layers[:152]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[152:]:
+        #     layer.trainable = True
+    elif mode == 'tune':
+        print('\nUnfreezing last k something EfficientNet layers!')
+        for layer in base_model.layers[:227]:
+            layer.trainable = False
+        for layer in base_model.layers[227:]:
+            layer.trainable = True
+
+    net = base_model.output
+    # net = Dense(1024, activation='relu')(net)
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name, layer.trainable)
+    print(model.summary())
+
+    return model
+
+
 if __name__ == '__main__':
 
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='train')
+    parser.add_argument('--mode', type=str)
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--load', type=str, default=None)
@@ -300,8 +338,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model = create_xception_model(in_shape, args.mode)
-        model = create_meso_model(in_shape, args.mode)
+        model = create_efficientnet_model(in_shape, args.mode)
+        # model = create_meso_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -342,13 +380,13 @@ if __name__ == '__main__':
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
-            tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 factor=0.96, patience=3, min_lr=5e-4, verbose=1, mode='min'),
+            # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+            #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
         ]
 
-        # class_weight={0: 0.547, 1: 0.453}
-        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
+        class_weight={0: 0.546, 1: 0.454}
+        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
         
