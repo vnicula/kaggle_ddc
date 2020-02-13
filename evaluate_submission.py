@@ -76,6 +76,9 @@ if __name__ == '__main__':
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
 
+        asis_log_loss = log_loss(y_test, X_test)
+        print('Fold {} test log loss as is: {}.'.format(fold, asis_log_loss))
+
         best_range, best_loss = compute_clip_range(y_train, X_train)
         print('Best fold {} train log loss: {}, with clip range: {}'.format(fold, best_loss, best_range))
         X_test_clipped = np.clip(X_test, best_range[0], best_range[1])
