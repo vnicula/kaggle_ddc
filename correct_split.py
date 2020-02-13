@@ -124,6 +124,9 @@ if __name__ == '__main__':
 	val_list = [0, 1, 12, 22, 32, 42]
 	common_actors = split_intersection(clc, val_list)
 	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
+	val_list = range(41, 50)
+	common_actors = split_intersection(clc, val_list)
+	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
 	
 	val_list = [0, 1, 12, 32, 42]
 	candidate_chunk, candidate_common = closest_chunk(clc, val_list)
@@ -148,10 +151,12 @@ if __name__ == '__main__':
 	for i in range(10):
 		print('Step {}'.format(i))
 		candidate_chunk, candidate_common = cheapest_chunk(clc, val_list)
-		print('\nClosest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
+		print('\nCheapest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
 		val_list.append(candidate_chunk)
 		common_actors = split_intersection(clc, val_list)
 		print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
+
+
 	# merged = dict()
 	# for chunk, cluster in zip(df.chunk, df.cluster):
 	# 	chunk = tuple((chunk,))

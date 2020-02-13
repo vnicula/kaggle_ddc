@@ -101,25 +101,6 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     # print(tracks)
     faces = get_faces_from_tracks(originals, tracks[:keep_tracks], img_scale, face_size)
 
-    # for track in tracks[:keep_tracks]:
-    #     track_faces = []
-    #     track_boxes = []
-    #     for i, bbox in enumerate(track['bboxes']):
-    #         frame_indx = track['start_frame'] + i - 1
-    #         original = originals[frame_indx]
-    #         (x,y,w,h) = (
-    #             max(int(bbox[0] / img_scale) - constants.MARGIN, 0),
-    #             max(int(bbox[1] / img_scale) - constants.MARGIN, 0),
-    #             int((bbox[2]-bbox[0]) / img_scale) + 2*constants.MARGIN,
-    #             int((bbox[3]-bbox[1]) / img_scale) + 2*constants.MARGIN
-    #         )
-    #         face_extract = original[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
-    #         face_extract = cv2.resize(face_extract, (face_size, face_size))
-    #         track_faces.append(face_extract)
-    #         track_boxes.append([x, y, w, h, frame_indx])
-    #     faces.append(track_faces)
-    #     boxes.append(track_boxes)
-
     return faces, tracks[:keep_tracks]
 
 

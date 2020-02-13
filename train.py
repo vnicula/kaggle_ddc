@@ -139,7 +139,10 @@ def compile_model(model, mode, lr):
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
     if mode == 'train':
         METRICS.append(fraction_positives)
-        my_loss = binary_focal_loss(alpha=0.7)
+        my_loss = tf.keras.losses.BinaryCrossentropy(
+            # label_smoothing=0.025
+        )
+        # my_loss = binary_focal_loss(alpha=0.7)
     else:
         my_loss = tf.keras.losses.BinaryCrossentropy(
             # label_smoothing=0.025
@@ -169,10 +172,11 @@ def create_model(input_shape):
     classifier.model.load_weights('one_model_weights.h5')
 
     for i, layer in enumerate(classifier.model.layers):
-        print(i, layer.name, layer.trainable)
+        # print(i, layer.name, layer.trainable)
         if layer.name == 'flatten':
             output = layer.output
             print('output set to {}.'.format(layer.name))
+
     feature_extractor = Model(inputs=classifier.model.input, outputs=output)
 
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
@@ -193,9 +197,10 @@ def create_model(input_shape):
     #     input_shape=None, 
     #     pooling='avg'
     # )
-
-    for layer in feature_extractor.layers:
+        
+    for i, layer in enumerate(feature_extractor.layers):
         layer.trainable = False
+        print(i, layer.name, layer.trainable)
     print(feature_extractor.summary())
 
     # for layer in feature_extractor.layers:
@@ -345,9 +350,9 @@ if __name__ == '__main__':
                 factor=0.96, patience=2, min_lr=5e-6, verbose=1, mode='min')
         ]
         
-        class_weight={0: 0.6, 1: 0.4}
+        class_weight={0: 0.7, 1: 0.3}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs, #class_weight=class_weight, 
+        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, 'final_model')

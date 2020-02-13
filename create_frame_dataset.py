@@ -13,6 +13,7 @@ import tqdm
 
 from facenet_pytorch import MTCNN
 
+REAL_TO_FAKE_RATIO = 1
 
 def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
@@ -37,7 +38,7 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
     if len(tracks) > 1:
         # exclude fakes with two faces - there's no good way to identify the fake track
         # print(real_faces)
-        return random.sample(real_faces, min(len(real_faces), 3*max_fakes)), [], real_detection
+        return random.sample(real_faces, min(len(real_faces), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
     
     if len(real_faces) > 0:
         fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
@@ -61,7 +62,7 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
                 if len(selected_fake_faces) >= max_fakes:
                     break
 
-        return real_faces[:3*max_fakes], selected_fake_faces, real_detection
+        return real_faces[:REAL_TO_FAKE_RATIO*max_fakes], selected_fake_faces, real_detection
 
     return [], [], real_detection    
 
@@ -100,7 +101,8 @@ def imwrite_faces(output_dir, vid_file, faces):
 
 
 def run(detector, input_dir, max_fakes):
-    with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
+    # with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
+    with open(os.path.join('.', 'all_metadata.json')) as json_file:
         label_data = json.load(json_file)
 
     writing_dir_0 = os.path.join(input_dir, '0')
@@ -159,8 +161,9 @@ if __name__ == '__main__':
 
     dirs = glob.glob(args.input_dirs)
     label = args.label
+
     for dir in dirs:
-        if 'json' == label:
+        if 'json' in label:
             run(detector, dir, 5)
         else:
             run_label(detector, dir, 10, label)

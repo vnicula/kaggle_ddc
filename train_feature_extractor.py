@@ -357,7 +357,7 @@ if __name__ == '__main__':
 
 
     elif args.mode == 'eval':
-        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
+        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=False)
         model.evaluate(eval_dataset)
 
     if args.save == 'true':
