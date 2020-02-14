@@ -80,6 +80,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     detections = []
 
     for lb in np.arange(0, len(images), batch_size):
+        print(images[lb:lb+batch_size])
         imgs_pil = [Image.fromarray(image) for image in images[lb:lb+batch_size]]
         frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
         if (frames_boxes is not None) and (len(frames_boxes) > 0):
