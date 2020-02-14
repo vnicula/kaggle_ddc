@@ -92,7 +92,8 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
     vidcap.release()
     return imgs, imrs, img_scale
 
-    def iou(bbox1, bbox2):
+
+def iou(bbox1, bbox2):
     """
     Calculates the intersection-over-union of two bounding boxes.
 
@@ -256,9 +257,10 @@ def run(file_list):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
-    model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
+    # model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
+    model = load_model('one_model.h5', custom_objects=custom_objs)
 #     print(model.summary())
-    score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
+    # score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
     len_file_list = len(file_list)
     for i in range(len_file_list):
         f_name = os.path.basename(file_list[i])
@@ -315,7 +317,9 @@ if __name__ == '__main__':
 
     t0 = time.time()
 
-    file_paths = glob.glob(os.path.join(input_dir, 'test_videos/*.mp4'))
+    # KAGGLE
+    # file_paths = glob.glob(os.path.join(input_dir, 'test_videos/*.mp4'))
+    file_paths = glob.glob(os.path.join(input_dir, '/raid/scratch/tf_train/dset/test_videos/*.mp4'))
     test_files = [os.path.basename(x) for x in file_paths]
 
 #     try:
