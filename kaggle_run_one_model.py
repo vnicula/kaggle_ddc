@@ -11,6 +11,7 @@ import numpy as np
 import os
 import pandas as pd
 import time
+import efficientnet.tfkeras
 import tensorflow as tf
 import torch
 
@@ -39,11 +40,12 @@ if gpus:
 
 META_DATA = "metadata.json"
 MARGIN = 16
-MAX_DETECTION_SIZE = 960
+MAX_DETECTION_SIZE = 1280
 SEQ_LEN = 30
-TRAIN_FACE_SIZE = 256
+TRAIN_FACE_SIZE = 224
 TRAIN_FRAME_COUNT = 32
 TRAIN_FPS = 3
+MIN_TRACK_FACES = 5
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
@@ -59,7 +61,10 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps):
     width = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH)) # float
     height = np.int32(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # float
 
-    skip_n = max(math.floor(fps / sample_fps), 0)
+#     NOTE: I think for some simple, non temporal models it's better to sample fixed number of frames.
+#     skip_n = max(math.floor(fps / sample_fps), 0)
+    skip_n = max(math.floor(frame_num / TRAIN_FRAME_COUNT), 0)
+    
     max_dimension = max(width, height)
     img_scale = 1.0
     if max_dimension > max_detection_size:
@@ -208,7 +213,7 @@ def detect_faces_bbox(detector, originals, images, batch_size, img_scale, face_s
                         boxes.append({'bbox': box, 'score':confidence})
                     detections.append(boxes)
 #     print(detections)
-    tracks = track_iou(detections, 0.8, 0.9, 0.1, 10)
+    tracks = track_iou(detections, 0.8, 0.9, 0.05, MIN_TRACK_FACES)
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
 #     print(tracks)
     for track in tracks[:2]:
@@ -257,10 +262,9 @@ def run(file_list):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
-    # model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
-    model = load_model('one_model.h5', custom_objects=custom_objs)
+    model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
 #     print(model.summary())
-    # score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
+#     score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
     len_file_list = len(file_list)
     for i in range(len_file_list):
         f_name = os.path.basename(file_list[i])
@@ -277,18 +281,18 @@ def run(file_list):
 #                 print('model preds: ', model_prediction)
                 if len(model_prediction) > 0:
                     prediction = model_prediction.mean()
-                    prediction = score_calibrator.predict_proba(prediction.reshape(-1, 1))[:,1]
+#                     prediction = score_calibrator.predict_proba(prediction.reshape(-1, 1))[:,1]
 #                     prediction = np.percentile(model_prediction, 60)
                 else:
                     print('Model gave no prediction!')
 
-    #                 fig = plt.figure(figsize=(20, 24))
-    #                 for i, frame_face in enumerate(faces[0]):
-    #                     ax = fig.add_subplot(5, 6, i+1)
-    #                     ax.axis('off')
-    #                     plt.imshow(frame_face)
-    #                 plt.tight_layout()
-    #                 plt.show()
+#                 fig = plt.figure(figsize=(20, 24))
+#                 for i, frame_face in enumerate(faces[0]):
+#                     ax = fig.add_subplot(5, 6, i+1)
+#                     ax.axis('off')
+#                     plt.imshow(frame_face)
+#                 plt.tight_layout()
+#                 plt.show()
 
                 del prediction_faces
             del faces
@@ -341,4 +345,3 @@ if __name__ == '__main__':
     print("Execution took: {}".format(t1-t0))
 
     torch.cuda.empty_cache()
-
