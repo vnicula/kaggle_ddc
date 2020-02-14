@@ -159,14 +159,17 @@ if __name__ == '__main__':
     detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
         post_process=False, keep_all=True, select_largest=False)
 
-    dirs = glob.glob(args.input_dirs)
-    label = args.label
+    faces, tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
+    print(tracks)
 
-    for dir in dirs:
-        if 'json' in label:
-            run(detector, dir, 5)
-        else:
-            run_label(detector, dir, 10, label)
+    # dirs = glob.glob(args.input_dirs)
+    # label = args.label
+
+    # for dir in dirs:
+    #     if 'json' in label:
+    #         run(detector, dir, 5)
+    #     else:
+    #         run_label(detector, dir, 10, label)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
