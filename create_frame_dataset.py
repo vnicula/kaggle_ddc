@@ -72,7 +72,7 @@ def process_single(detector, vid_path, label, max_faces):
         constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
 
     faces, tracks = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, 
-            scale, constants.TRAIN_FACE_SIZE, keep_tracks=2)
+            scale, constants.TRAIN_FACE_SIZE, keep_tracks=1)
     
     faces = [item for sublist in faces for item in sublist]
     
@@ -157,7 +157,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
-        post_process=False, keep_all=True, select_largest=False)
+        post_process=False, keep_all=False, select_largest=False)
 
     faces, tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
     print(tracks)
