@@ -67,8 +67,8 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     Returns:
         Augmented image
     """
-    # x = tf.image.random_hue(x, 0.08)
-    # x = tf.image.random_saturation(x, 0.6, 1.6)
+    x = tf.image.random_hue(x, 0.08)
+    x = tf.image.random_saturation(x, 0.6, 1.6)
     x = tf.image.random_brightness(x, 0.05)
     x = tf.image.random_contrast(x, 0.7, 1.3)
     x = tf.image.random_flip_left_right(x)
@@ -385,14 +385,13 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.546, 1: 0.454}
+        class_weight={0: 0.54, 1: 0.46}
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
         
         # lr_callback.plot_schedule()
         save_loss(history, 'final_featx_model')
-
 
     elif args.mode == 'eval':
         eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=False)

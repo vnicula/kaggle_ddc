@@ -262,7 +262,8 @@ def run(file_list):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
-    model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
+    # model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
+    model = load_model('one_model.h5', custom_objects=custom_objs)
 #     print(model.summary())
 #     score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
     len_file_list = len(file_list)

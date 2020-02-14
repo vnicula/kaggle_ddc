@@ -127,7 +127,9 @@ if __name__ == '__main__':
 	val_list = range(41, 50)
 	common_actors = split_intersection(clc, val_list)
 	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
-	
+	val_list = range(0, 10)
+	common_actors = split_intersection(clc, val_list)
+	print('\nLeaked actors for {} : {}\n'.format(val_list, common_actors))
 	val_list = [0, 1, 12, 32, 42]
 	candidate_chunk, candidate_common = closest_chunk(clc, val_list)
 	print('\nClosest chunk for {} is {} with common actors: {}\n'.format(val_list, candidate_chunk, candidate_common))
