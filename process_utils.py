@@ -80,7 +80,6 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     detections = []
 
     for lb in np.arange(0, len(images), batch_size):
-        print(images[lb:lb+batch_size])
         imgs_pil = [Image.fromarray(image) for image in images[lb:lb+batch_size]]
         frames_boxes, frames_confidences = detector.detect(imgs_pil, landmarks=False)
         if (frames_boxes is not None) and (len(frames_boxes) > 0):
@@ -99,9 +98,8 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         return faces, tracks[:keep_tracks]
 
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
-    # print(tracks)
     faces = get_faces_from_tracks(originals, tracks[:keep_tracks], img_scale, face_size)
-
+    # print(faces, tracks)
     return faces, tracks[:keep_tracks]
 
 
