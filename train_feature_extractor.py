@@ -8,7 +8,7 @@ import os
 import tensorflow as tf
 import time
 
-from efficientnet.tfkeras import EfficientNetB0
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -276,9 +276,9 @@ def create_efficientnet_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
-    efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    efficientnet_weights = 'pretrained/efficientnet-b3_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor, 
+    base_model = EfficientNetB3(weights=efficientnet_weights, input_tensor=input_tensor, 
         include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -292,10 +292,19 @@ def create_efficientnet_model(input_shape, mode):
         #     layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
-        for layer in base_model.layers[:214]:
+        # Use 214 for EffNetB0
+        # for layer in base_model.layers[:374]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[374:]:
+        #     layer.trainable = True
+        for layer in base_model.layers[:346]:
             layer.trainable = False
-        for layer in base_model.layers[214:]:
+        for layer in base_model.layers[346:]:
             layer.trainable = True
+        # for layer in base_model.layers[:258]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[258:]:
+        #     layer.trainable = True
 
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
