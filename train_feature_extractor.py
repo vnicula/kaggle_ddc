@@ -292,9 +292,9 @@ def create_efficientnet_model(input_shape, mode):
         #     layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
-        for layer in base_model.layers[:227]:
+        for layer in base_model.layers[:214]:
             layer.trainable = False
-        for layer in base_model.layers[227:]:
+        for layer in base_model.layers[214:]:
             layer.trainable = True
 
     net = base_model.output

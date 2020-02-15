@@ -160,6 +160,26 @@ def compile_model(model, mode, lr):
 def weighted_ce_logits(y_true, y_pred):
     return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.3, name='weighted_ce_logits')
 
+
+def create_efficientnet_model(input_shape):
+
+    # create the base pre-trained model
+    # efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    efficientnet_weights = None
+    print('Loading efficientnet weights from: ', efficientnet_weights)
+    base_model = EfficientNetB0(weights=efficientnet_weights, # input_tensor=input_layer, 
+        input_shape=input_shape, 
+        include_top=False, pooling='avg')
+
+    net = base_model.output
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    model = Model(inputs=base_model.input, outputs=out)
+
+    return model, base_model
+
+
 # TODO: use Bidirectional and try narrower MobileNet
 # TODO: explore removal of projection at the end of MobileNet to LSTM
 # TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
@@ -185,8 +205,8 @@ def create_model(input_shape):
 
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
-    weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-    print('Loading feature extractor weights from: ', weights)
+    # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    weights = 'one_model_weights.h5'
 
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
@@ -203,9 +223,12 @@ def create_model(input_shape):
     #     input_shape=None, 
     #     pooling='avg'
     # )
+    effnet, feature_extractor = create_efficientnet_model(input_shape[-3:])
+    print('Loading feature extractor weights from: ', weights)
+    effnet.load_weights(weights)
 
-    feature_extractor = EfficientNetB0(weights=weights, input_shape=input_shape[-3:], 
-        include_top=False, pooling='avg')
+    # feature_extractor = EfficientNetB0(weights=weights, input_shape=input_shape[-3:], 
+    #     include_top=False, pooling='avg')
     
     feature_extractor.trainable = False
     for i, layer in enumerate(feature_extractor.layers):
@@ -366,6 +389,25 @@ if __name__ == '__main__':
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, 'final_model')
+
+    elif args.mode == 'eval':
+        strategy = tf.distribute.MirroredStrategy()
+        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+
+        with strategy.scope():
+            model = create_model(in_shape)
+            if args.weights is not None:
+                print('Loading model and weights from: ', args.weights)
+                # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
+                model.load_weights(args.weights)
+            else:
+                raise ValueError('Predict mode needs --weights argument.')
+            compile_model(model, args.mode, args.lr)
+
+        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
+        eval_dataset = eval_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+        model.evaluate(eval_dataset)
 
     elif args.mode == 'predict':
         strategy = tf.distribute.MirroredStrategy()
