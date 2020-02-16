@@ -276,9 +276,9 @@ def create_efficientnet_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
-    efficientnet_weights = 'pretrained/efficientnet-b3_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB3(weights=efficientnet_weights, input_tensor=input_tensor, 
+    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor, 
         include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -293,14 +293,14 @@ def create_efficientnet_model(input_shape, mode):
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
         # Use 214 for EffNetB0
-        # for layer in base_model.layers[:374]:
-        #     layer.trainable = False
-        # for layer in base_model.layers[374:]:
-        #     layer.trainable = True
-        for layer in base_model.layers[:346]:
+        for layer in base_model.layers[:214]:
             layer.trainable = False
-        for layer in base_model.layers[346:]:
+        for layer in base_model.layers[214:]:
             layer.trainable = True
+        # for layer in base_model.layers[:346]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[346:]:
+        #     layer.trainable = True
         # for layer in base_model.layers[:258]:
         #     layer.trainable = False
         # for layer in base_model.layers[258:]:
@@ -394,7 +394,7 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.54, 1: 0.46}
+        class_weight={0: 0.58, 1: 0.42}
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)

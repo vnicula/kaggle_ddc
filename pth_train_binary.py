@@ -21,8 +21,8 @@ gpu = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 image_size = 224
 batch_size = 64
 
-crops_dir = "/raid/scratch/tf_train/dset/dfdc_train_part_10/?/*.png"
-val_crops_dir = "/raid/scratch/tf_train/dset/feat_val/dfdc_train_part_0/?/*.png"
+crops_dir = "/raid/scratch/tf_train/dset/dfdc_train_part_*/?/*.png"
+val_crops_dir = "/raid/scratch/tf_train/dset/feat_val/dfdc_train_part_*/?/*.png"
 
 img_path = random.choice(glob.glob(crops_dir))
 print(img_path)
