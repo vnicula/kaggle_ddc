@@ -347,8 +347,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model = create_efficientnet_model(in_shape, args.mode)
-        # model = create_meso_model(in_shape, args.mode)
+        # model = create_efficientnet_model(in_shape, args.mode)
+        model = create_meso_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -394,7 +394,7 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.58, 1: 0.42}
+        class_weight={0: 0.59, 1: 0.41}
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)

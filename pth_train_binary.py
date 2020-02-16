@@ -12,11 +12,13 @@ import torchvision.models as models
 from torchvision.transforms import Normalize
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from tqdm.notebook import tqdm
+# from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 
 gpu = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(gpu)
 
 image_size = 224
 batch_size = 64
@@ -151,11 +153,11 @@ del dataset
 
 def create_data_loaders(train_crops_dir, eval_crops_dir, image_size, batch_size, num_workers):
 
-    train_dataset = VideoDataset(train_crops_dir, "train", image_size, sample_size=10000)
+    train_dataset = VideoDataset(train_crops_dir, "train", image_size, sample_size=347014)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, 
                               num_workers=num_workers, pin_memory=True)
 
-    val_dataset = VideoDataset(eval_crops_dir, "val", image_size, sample_size=500, seed=1234)
+    val_dataset = VideoDataset(eval_crops_dir, "val", image_size, sample_size=37436, seed=1234)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, 
                             num_workers=num_workers, pin_memory=True)
 
@@ -251,6 +253,9 @@ def fit(epochs):
 
             # TODO: can do LR annealing here
             # TODO: can save checkpoint here
+            checkpoint_name = 'checkpoint_ep' + str(epochs_done) + '.pth'
+            print('Saving checkpoint: {}'.format(checkpoint_name))
+            torch.save(net.state_dict(), checkpoint_name)
 
             print("")
 
@@ -293,7 +298,7 @@ print([k for k,v in net.named_parameters() if v.requires_grad])
 
 evaluate(net, val_loader, device=gpu)
 
-lr = 0.01
+lr = 0.001
 wd = 0.
 
 history = { "train_bce": [], "val_bce": [] }
@@ -308,7 +313,7 @@ optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=wd)
 # checkpoint = torch.load("optimizer-checkpoint.pth")
 # optimizer.load_state_dict(checkpoint)
 
-fit(5)
+fit(100)
 
 # def set_lr(optimizer, lr):
 #     for param_group in optimizer.param_groups:
@@ -319,7 +324,7 @@ fit(5)
 
 # fit(5)
 
-torch.save(net.state_dict(), "checkpoint.pth")
+torch.save(net.state_dict(), "checkpoint_final.pth")
 
 # plt.plot(history["val_bce"])
 print(history["val_bce"])
