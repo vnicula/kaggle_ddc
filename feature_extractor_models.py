@@ -101,3 +101,66 @@ class MesoInception5():
 
         return Model(inputs = x, outputs = y)
 
+
+def residual_unit(X, filter_num, stride_num):
+    X_shortcut = X
+
+    # Main path.
+    # First component.
+    X = tf.keras.layers.Conv2D(filters=filter_num,
+                               kernel_size=(3, 3),
+                               strides=stride_num,
+                               padding='same')(X)
+    X = tf.keras.layers.BatchNormalization()(X)
+    X = tf.keras.layers.ELU()(X)
+    # Second component.
+    X = tf.keras.layers.Conv2D(filters=filter_num,
+                               kernel_size=(3, 3),
+                               strides=1,
+                               padding='same')(X)
+    X = tf.keras.layers.BatchNormalization()(X)
+
+    # Shortcut Path.
+    X_shortcut = tf.keras.layers.Conv2D(filters=filter_num,
+                                        kernel_size=(1, 1),
+                                        strides=stride_num,
+                                        padding='same')(X_shortcut)
+    X_shortcut = tf.keras.layers.BatchNormalization()(X_shortcut)
+
+    X = tf.keras.layers.Add()([X, X_shortcut])
+    X = tf.keras.layers.ELU()(X)
+
+    return X
+
+
+def resnet_18(input_shape, label_num):
+    X_input = tf.keras.layers.Input(shape=input_shape)
+    X = tf.keras.layers.Conv2D(filters=64,
+                               kernel_size=(7, 7),
+                               strides=2,
+                               padding='same')(X_input)
+    X = tf.keras.layers.BatchNormalization()(X)
+    X = tf.keras.layers.ELU()(X)
+    X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
+                                  padding='same')(X)
+
+    X = residual_unit(X, filter_num=64, stride_num=1)
+    X = residual_unit(X, filter_num=64, stride_num=1)
+
+    X = residual_unit(X, filter_num=128, stride_num=2)
+    X = residual_unit(X, filter_num=128, stride_num=1)
+
+    X = residual_unit(X, filter_num=256, stride_num=2)
+    X = residual_unit(X, filter_num=256, stride_num=1)
+
+    X = residual_unit(X, filter_num=512, stride_num=2)
+    X = residual_unit(X, filter_num=512, stride_num=1)
+
+    X = tf.keras.layers.GlobalAveragePooling2D()(X)
+    X = tf.keras.layers.Flatten()(X)
+    X = tf.keras.layers.Dense(units=1000, activation=tf.nn.elu)(X)
+    X = tf.keras.layers.Dense(units=label_num, activation=tf.nn.softmax)(X)
+
+    model = tf.keras.models.Model(inputs=X_input, outputs=X)
+    return model
+

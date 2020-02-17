@@ -23,7 +23,7 @@ print(gpu)
 image_size = 224
 batch_size = 64
 
-crops_dir = "/raid/scratch/tf_train/dset/dfdc_train_part_*/?/*.png"
+crops_dir = "/raid/scratch/tf_train/dset/dfdc_train_part_[1234]?/?/*.png"
 val_crops_dir = "/raid/scratch/tf_train/dset/feat_val/dfdc_train_part_*/?/*.png"
 
 img_path = random.choice(glob.glob(crops_dir))
@@ -290,7 +290,13 @@ def freeze_until(net, param_name):
         if name == param_name:
             found_name = True
         params.requires_grad = found_name
+        print(name)
 
+
+def freeze_by_name(net, param_name):
+    for name, p in net.named_parameters():
+        if param_name in name:
+            p.requires_grad = False
 
 freeze_until(net, "layer4.0.conv1.weight")
 

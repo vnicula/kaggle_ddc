@@ -190,23 +190,23 @@ def create_model(input_shape):
     input_mask = Input(shape=(input_shape[0]))
     # reshape = Reshape([224, 224, 3])(input_layer)
 
-    # classifier = featx.MesoInception5(width=1)
-    # # print(classifier.model.summary())
-    # # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
-    # classifier.model.load_weights('one_model_weights.h5')
-
-    # for i, layer in enumerate(classifier.model.layers):
-    #     # print(i, layer.name, layer.trainable)
-    #     if layer.name == 'flatten':
-    #         output = layer.output
-    #         print('output set to {}.'.format(layer.name))
-
-    # feature_extractor = Model(inputs=classifier.model.input, outputs=output)
-
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
     # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     weights = 'one_model_weights.h5'
+
+    classifier = featx.MesoInception5(width=1)
+    # print(classifier.model.summary())
+    # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
+    classifier.model.load_weights(weights)
+
+    for i, layer in enumerate(classifier.model.layers):
+        # print(i, layer.name, layer.trainable)
+        if layer.name == 'flatten':
+            output = layer.output
+            print('output set to {}.'.format(layer.name))
+
+    feature_extractor = Model(inputs=classifier.model.input, outputs=output)
 
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
@@ -223,9 +223,10 @@ def create_model(input_shape):
     #     input_shape=None, 
     #     pooling='avg'
     # )
-    effnet, feature_extractor = create_efficientnet_model(input_shape[-3:])
-    print('Loading feature extractor weights from: ', weights)
-    effnet.load_weights(weights)
+
+    # effnet, feature_extractor = create_efficientnet_model(input_shape[-3:])
+    # print('Loading feature extractor weights from: ', weights)
+    # effnet.load_weights(weights)
 
     # feature_extractor = EfficientNetB0(weights=weights, input_shape=input_shape[-3:], 
     #     include_top=False, pooling='avg')
@@ -364,7 +365,7 @@ if __name__ == '__main__':
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 filepath='fattw_{epoch}.h5',
-                save_best_only=True,
+                save_best_only=False,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
                 save_weights_only=True,
@@ -401,7 +402,7 @@ if __name__ == '__main__':
                 # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
                 model.load_weights(args.weights)
             else:
-                raise ValueError('Predict mode needs --weights argument.')
+                raise ValueError('Eval mode needs --weights argument.')
             compile_model(model, args.mode, args.lr)
 
         eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
