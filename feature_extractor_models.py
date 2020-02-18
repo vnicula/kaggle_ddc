@@ -199,9 +199,9 @@ class OneMIL():
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
 
         y = Flatten()(x4)
-        y = Dropout(0.5)(y)
-        y = Dense(32*self.width)(y)
-        y = LeakyReLU(alpha=0.1)(y)
+        # y = Dropout(0.5)(y)
+        # y = Dense(32*self.width)(y)
+        # y = LeakyReLU(alpha=0.1)(y)
 
         return Model(inputs=x, outputs=y)
 
@@ -236,8 +236,8 @@ class OneMIL():
         y = Flatten()(x5)
         y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
-        y = Dense(32*self.width)(y)
-        y = LeakyReLU(alpha=0.1)(y)
+        # y = Dense(32*self.width)(y)
+        # y = LeakyReLU(alpha=0.1)(y)
         # y = Dropout(0.5)(y)
         y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(y)
 
@@ -299,8 +299,9 @@ class OneMIL():
 
         all_outs = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
-        out = keras_utils.SeqWeightedAttention()(all_outs)
-        out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(out)
-        out = 0.5 * out + 0.5 * full_out
+        mil_out = keras_utils.SeqWeightedAttention()(all_outs)
+        mil_out = Dropout(0.5)(mil_out)
+        mil_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(mil_out)
+        out = 0.5 * mil_out + 0.5 * full_out
 
         return Model(inputs=x_input, outputs=out)

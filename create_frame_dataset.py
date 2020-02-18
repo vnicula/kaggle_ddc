@@ -140,7 +140,21 @@ if __name__ == '__main__':
 
     t0 = time.time()
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dirs', type=str)
+    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--label', type=str, default='json')
+    args = parser.parse_args()
+
     track_cache = {}
+
+    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
+        post_process=False, keep_all=False, select_largest=False)
+
+    # DEBUG stuff
+    # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
+    # print(tracks)
+    # DEBUG stuff
     # real_faces, fake_faces, real_detection = process_pair(
     #     detector,
     #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/wcqvzujamg.mp4",
@@ -149,18 +163,6 @@ if __name__ == '__main__':
     #     5,
     # )
     # imwrite_tiled_faces(real_faces, fake_faces)
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dirs', type=str)
-    parser.add_argument('--device', type=str, default='cpu')
-    parser.add_argument('--label', type=str, default='json')
-    args = parser.parse_args()
-
-    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
-        post_process=False, keep_all=False, select_largest=False)
-
-    # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
-    # print(tracks)
 
     dirs = glob.glob(args.input_dirs)
     label = args.label

@@ -68,6 +68,7 @@ def get_faces_from_tracks(originals, tracks, img_scale, face_size):
                     int((bbox[3]-bbox[1]) / img_scale) + 2*constants.MARGIN
                 )
                 face_extract = original[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
+                # TODO remove this
                 face_extract = cv2.resize(face_extract, (face_size, face_size))
                 track_faces.append(face_extract)
         faces.append(track_faces)
@@ -93,6 +94,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     
     tracks = iou_tracker.track_iou(detections, 0.8, 0.9, 0.1, constants.MIN_TRACK_FACES)
 
+    # TODO remove this
     # Can't use anything since it's multitrack fake
     if label == 1 and len(tracks) > 1:
         return faces, tracks[:keep_tracks]
