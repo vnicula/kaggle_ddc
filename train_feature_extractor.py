@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatena
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
-from keras_utils import binary_focal_loss, save_loss, LRFinder
+from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention
 
 tfkl = tf.keras.layers
 
@@ -67,7 +67,7 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     Returns:
         Augmented image
     """
-    x = tf.image.random_hue(x, 0.08)
+    # x = tf.image.random_hue(x, 0.08)
     x = tf.image.random_saturation(x, 0.6, 1.6)
     x = tf.image.random_brightness(x, 0.05)
     x = tf.image.random_contrast(x, 0.7, 1.3)
@@ -90,17 +90,44 @@ def process_path(file_path):
     return img, label
 
 
+def class_func(feat, label):
+    return label
+
+
+def balance_dataset(dset):
+    negative_ds = dset.filter(lambda features, label: label==0)
+    # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
+    # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
+    positive_ds = dset.filter(lambda features, label: label==1).take(6239)
+    # print('Negative dataset class fractions: ', class_fractions(negative_ds))
+    # print('Positive dataset class fractions: ', class_fractions(positive_ds))
+    
+    balanced_ds = tf.data.experimental.sample_from_datasets(
+        [negative_ds, positive_ds], [0.5, 0.5]
+    )
+    return balanced_ds
+
+
 def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=60000):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
+
+    if is_training:
+        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    else:
+        # TODO: seems rejection_resample doesn't work with keras fit
+        # resampler = tf.data.experimental.rejection_resample(
+        #     class_func, target_dist=[0.5, 0.5]) #, initial_dist=[0.345, 0.655])
+        # ds = ds.apply(resampler)
+        # ds = ds.map(lambda extra_label, features_and_label: features_and_label)
+
+        ds = balance_dataset(ds)
+
     if cache:
         if isinstance(cache, str):
             ds = ds.cache(cache)
         else:
             ds = ds.cache()
-
-    if is_training:
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
 
     # Repeat forever
     # ds = ds.repeat()
@@ -193,6 +220,18 @@ def create_meso_model(input_shape, mode):
 
     for i, layer in enumerate(classifier.model.layers):
         print(i, layer.name, layer.trainable)
+    print(classifier.model.summary())
+
+    return classifier.model
+
+
+def create_onemil_model(input_shape, mode):
+
+    classifier = featx.OneMIL(input_shape)
+
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name, layer.trainable)
+
     print(classifier.model.summary())
 
     return classifier.model
@@ -319,6 +358,36 @@ def create_efficientnet_model(input_shape, mode):
     return model
 
 
+def create_resnet_model(input_shape, mode):
+
+    model = featx.resnet_18(input_shape, num_filters=4)
+    print(model.summary())
+
+    return model
+
+
+def count(counts, batch):
+  features, labels = batch
+  class_1 = labels == 1
+  class_1 = tf.cast(class_1, tf.int32)
+
+  class_0 = labels == 0
+  class_0 = tf.cast(class_0, tf.int32)
+
+  counts['class_0'] += tf.reduce_sum(class_0)
+  counts['class_1'] += tf.reduce_sum(class_1)
+
+  return counts
+
+
+def class_fractions(dset):
+    counts = dset.reduce(initial_state={'class_0': 0, 'class_1': 0}, reduce_func = count)
+    counts = np.array([counts['class_0'].numpy(), counts['class_1'].numpy()]).astype(np.float32)
+    fractions = counts/counts.sum()
+
+    return fractions, counts
+
+
 if __name__ == '__main__':
 
     t0 = time.time()
@@ -340,6 +409,7 @@ if __name__ == '__main__':
 
     custom_objs = {
         'fraction_positives': fraction_positives,
+        'SeqWeightedAttention': SeqWeightedAttention,
     }
 
     strategy = tf.distribute.MirroredStrategy()
@@ -348,7 +418,7 @@ if __name__ == '__main__':
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
         # model = create_efficientnet_model(in_shape, args.mode)
-        model = create_meso_model(in_shape, args.mode)
+        model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -357,13 +427,14 @@ if __name__ == '__main__':
             print('\nTraining model from scratch.')
         compile_model(model, args.mode, args.lr)
 
+    eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
+    fractions, counts = class_fractions(eval_dataset)
+    print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
+
     if args.mode == 'train' or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
             cache=False
             # cache='/raid/scratch/training_cache.mem'
-        )
-        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, 
-            cache=True
         )
 
         # lr_callback = LRFinder(num_samples=33501, batch_size=batch_size,
@@ -384,7 +455,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=30,
+                patience=25,
                 verbose=1),
             tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
@@ -394,7 +465,7 @@ if __name__ == '__main__':
             # lr_callback,
         ]
 
-        class_weight={0: 0.59, 1: 0.41}
+        class_weight={0: 0.54, 1: 0.46}
         history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
@@ -403,7 +474,6 @@ if __name__ == '__main__':
         save_loss(history, 'final_featx_model')
 
     elif args.mode == 'eval':
-        eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=False)
         model.evaluate(eval_dataset)
 
     if args.save == 'true':
