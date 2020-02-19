@@ -397,7 +397,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--load', type=str, default=None)
-    parser.add_argument('--save', type=str, default='true')
+    parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
     args = parser.parse_args()
@@ -476,7 +476,7 @@ if __name__ == '__main__':
     elif args.mode == 'eval':
         model.evaluate(eval_dataset)
 
-    if args.save == 'true':
+    if args.save == 'True':
         model_file_name = args.mode + '_featx_full_model.h5'
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name

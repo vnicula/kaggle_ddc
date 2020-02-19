@@ -53,7 +53,8 @@ def parse_vid(video_path, max_detection_size, max_frame_count, sample_fps, skip_
     return imgs, imrs, img_scale
 
 
-def get_faces_from_tracks(originals, tracks, img_scale, face_size):
+def get_faces_from_tracks(originals, tracks, img_scale):
+    """returns not resized faces"""
     faces = []
     for track in tracks:
         track_faces = []
@@ -68,8 +69,6 @@ def get_faces_from_tracks(originals, tracks, img_scale, face_size):
                     int((bbox[3]-bbox[1]) / img_scale) + 2*constants.MARGIN
                 )
                 face_extract = original[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
-                # TODO remove this
-                face_extract = cv2.resize(face_extract, (face_size, face_size))
                 track_faces.append(face_extract)
         faces.append(track_faces)
 
@@ -100,7 +99,11 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         return faces, tracks[:keep_tracks]
 
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
-    faces = get_faces_from_tracks(originals, tracks[:keep_tracks], img_scale, face_size)
+    faces = get_faces_from_tracks(originals, tracks[:keep_tracks], img_scale)
+
+    if face_size > 0:
+        for face in faces:
+            face = cv2.resize(face, (face_size, face_size))
     # print(faces, tracks)
     return faces, tracks[:keep_tracks]
 
@@ -124,7 +127,8 @@ def detect_faces_no_tracks(detector, images, batch_size, face_size):
                         )
                     image = images[i]
                     face_extract = image[y:y+h, x:x+w].copy() # Without copy() memory leak with GPU
-                    face_extract = cv2.resize(face_extract, (face_size, face_size))
+                    if face_size > 0:
+                        face_extract = cv2.resize(face_extract, (face_size, face_size))
                     faces.append(face_extract)
     
     return faces

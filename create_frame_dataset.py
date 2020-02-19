@@ -13,9 +13,9 @@ import tqdm
 
 from facenet_pytorch import MTCNN
 
-REAL_TO_FAKE_RATIO = 2
+REAL_TO_FAKE_RATIO = 4
 
-def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
+def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes, face_size):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
         constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
     fake_imgs, fake_imrs, fake_scale = process_utils.parse_vid(fake_vid_path, constants.MAX_DETECTION_SIZE, 
@@ -26,11 +26,11 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
         print('Found {} in track cache, skipping detection.'.format(real_vid_name))
         real_detection = False
         tracks = track_cache[real_vid_name]
-        real_faces = process_utils.get_faces_from_tracks(real_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
+        real_faces = process_utils.get_faces_from_tracks(real_imgs, tracks, real_scale)
     else:
         real_detection = True
         real_faces, tracks = process_utils.detect_faces_bbox(detector, 0, real_imgs, real_imrs, 256, 
-            real_scale, constants.TRAIN_FACE_SIZE, keep_tracks=2)
+            real_scale, 0, keep_tracks=2)
         print('Adding {} to track cache.'.format(real_vid_name))
         track_cache[real_vid_name] = tracks
     
@@ -38,10 +38,15 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
     if len(tracks) > 1:
         # exclude fakes with two faces - there's no good way to identify the fake track
         # print(real_faces)
-        return random.sample(real_faces, min(len(real_faces), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
+        resized_real = []
+        for face in real_faces:
+            face = cv2.resize(face, (face_size, face_size))
+            resized_real.append(face)
+
+        return random.sample(resized_real, min(len(resized_real), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
     
     if len(real_faces) > 0:
-        fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale, constants.TRAIN_FACE_SIZE)
+        fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale)
         fake_faces = [item for sublist in fake_faces for item in sublist]
         img_diffs = []
         for real_face, fake_face in zip(real_faces, fake_faces):
@@ -62,17 +67,26 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
                 if len(selected_fake_faces) >= max_fakes:
                     break
 
-        return real_faces[:REAL_TO_FAKE_RATIO*max_fakes], selected_fake_faces, real_detection
+        resized_real = []
+        for face in real_faces:
+            face = cv2.resize(face, (face_size, face_size))
+            resized_real.append(face)
+        resized_fake = []
+        for face in selected_fake_faces:
+            face = cv2.resize(face, (face_size, face_size))
+            resized_fake.append(face)
+
+        return resized_real[:REAL_TO_FAKE_RATIO*max_fakes], resized_fake, real_detection
 
     return [], [], real_detection    
 
 
-def process_single(detector, vid_path, label, max_faces):
+def process_single(detector, vid_path, label, max_faces, face_size):
     imgs, imrs, scale = process_utils.parse_vid(vid_path, constants.MAX_DETECTION_SIZE,
         constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
 
     faces, tracks = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, 
-            scale, constants.TRAIN_FACE_SIZE, keep_tracks=1)
+            scale, face_size, keep_tracks=1)
     
     faces = [item for sublist in faces for item in sublist]
     
@@ -100,14 +114,14 @@ def imwrite_faces(output_dir, vid_file, faces):
         cv2.imwrite(file_name, cv2.cvtColor(face, cv2.COLOR_RGB2BGR))
 
 
-def run(detector, input_dir, max_fakes):
-    # with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
-    with open(os.path.join('.', 'all_metadata.json')) as json_file:
+def run(detector, input_dir, max_fakes, face_size):
+    with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
+    # with open(os.path.join('.', 'all_metadata.json')) as json_file:
         label_data = json.load(json_file)
 
-    writing_dir_0 = os.path.join(input_dir, '0')
+    writing_dir_0 = os.path.join(input_dir, str(face_size), '0')
     os.makedirs(writing_dir_0, exist_ok=True)
-    writing_dir_1 = os.path.join(input_dir, '1')
+    writing_dir_1 = os.path.join(input_dir, str(face_size), '1')
     os.makedirs(writing_dir_1, exist_ok=True)
 
     track_cache = {}
@@ -118,13 +132,13 @@ def run(detector, input_dir, max_fakes):
             fake_file_path = os.path.join(input_dir, file_name)
             if os.path.exists(real_file_path) and os.path.exists(fake_file_path):
                 real_faces, selected_fake_faces, real_detection = process_pair(
-                    detector, real_file_path, fake_file_path, track_cache, max_fakes)
+                    detector, real_file_path, fake_file_path, track_cache, max_fakes, face_size)
                 if real_detection:
                     imwrite_faces(writing_dir_0, real_file, real_faces)
                 imwrite_faces(writing_dir_1, file_name, selected_fake_faces)
 
 
-def run_label(detector, input_dir, max_faces, label):
+def run_label(detector, input_dir, max_faces, label, face_size):
 
     writing_dir = os.path.join(input_dir, label)
     os.makedirs(writing_dir, exist_ok=True)
@@ -132,7 +146,7 @@ def run_label(detector, input_dir, max_faces, label):
 
     for file_path in tqdm.tqdm(file_list):
         file_name = os.path.basename(file_path)
-        faces = process_single(detector, file_path, int(label), max_faces)
+        faces = process_single(detector, file_path, int(label), max_faces, face_size)
         imwrite_faces(writing_dir, file_name, faces)
 
 
@@ -144,6 +158,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dirs', type=str)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--label', type=str, default='json')
+    parser.add_argument('--face_size', type=int, default=constants.TRAIN_FACE_SIZE)
     args = parser.parse_args()
 
     track_cache = {}
@@ -166,12 +181,13 @@ if __name__ == '__main__':
 
     dirs = glob.glob(args.input_dirs)
     label = args.label
+    face_size = args.face_size
 
     for dir in dirs:
         if 'json' in label:
-            run(detector, dir, 5)
+            run(detector, dir, 5, face_size)
         else:
-            run_label(detector, dir, 5, label)
+            run_label(detector, dir, 5, label, face_size)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
