@@ -274,6 +274,8 @@ def create_xception_model(input_shape, mode):
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name, layer.trainable)
     print(model.summary())
 
     return model
@@ -366,7 +368,7 @@ def create_efficientnet_model(input_shape, mode):
 
 def create_resnet_model(input_shape, mode):
 
-    model = featx.resnet_18(input_shape, num_filters=4)
+    model = featx.resnet_18(input_shape, num_filters=8)
     print(model.summary())
 
     return model
@@ -423,8 +425,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model = create_meso_model(in_shape, args.mode)
-        model = create_onemil_model(in_shape, args.mode)
+        model = create_xception_model(in_shape, args.mode)
+        # model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
