@@ -292,13 +292,17 @@ def create_mobilenet_model(input_shape, mode):
 
     if mode == 'train':
         print('\nFreezing all Mobilenet layers!')
-        for layer in base_model.layers:
-            layer.trainable = False
-        # print('\nUnfreezing last Mobilenet layers!')
+        # for layer in base_model.layers:
+        #     layer.trainable = False
+        print('\nUnfreezing last Mobilenet layers!')
         # for layer in base_model.layers[:152]:
         #     layer.trainable = False
         # for layer in base_model.layers[152:]:
         #     layer.trainable = True
+        for layer in base_model.layers[:135]:
+            layer.trainable = False
+        for layer in base_model.layers[135:]:
+            layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something mobilenet layers!')
         for layer in base_model.layers[:126]:
@@ -330,13 +334,13 @@ def create_efficientnet_model(input_shape, mode):
 
     if mode == 'train':
         print('\nFreezing all EfficientNet layers!')
-        for layer in base_model.layers:
-            layer.trainable = False
-        # print('\nUnfreezing last Mobilenet layers!')
-        # for layer in base_model.layers[:152]:
+        # for layer in base_model.layers:
         #     layer.trainable = False
-        # for layer in base_model.layers[152:]:
-        #     layer.trainable = True
+        print('\nUnfreezing last efficient net layers!')
+        for layer in base_model.layers[:214]:
+            layer.trainable = False
+        for layer in base_model.layers[214:]:
+            layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
         # Use 214 for EffNetB0
@@ -425,7 +429,7 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model = create_xception_model(in_shape, args.mode)
+        model = create_efficientnet_model(in_shape, args.mode)
         # model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
