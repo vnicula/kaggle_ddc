@@ -13,9 +13,11 @@ import tqdm
 
 from facenet_pytorch import MTCNN
 
-REAL_TO_FAKE_RATIO = 4
+REAL_TO_FAKE_RATIO = 3
+KEEP_ASPECT = True
+MIN_FACE_DIFF = 3.5
 
-def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes, face_size):
+def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
         constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
     fake_imgs, fake_imrs, fake_scale = process_utils.parse_vid(fake_vid_path, constants.MAX_DETECTION_SIZE, 
@@ -38,19 +40,14 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes,
     if len(tracks) > 1:
         # exclude fakes with two faces - there's no good way to identify the fake track
         # print(real_faces)
-        resized_real = []
-        for face in real_faces:
-            face = cv2.resize(face, (face_size, face_size))
-            resized_real.append(face)
-
-        return random.sample(resized_real, min(len(resized_real), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
+        return random.sample(real_faces, min(len(real_faces), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
     
     if len(real_faces) > 0:
         fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale)
         fake_faces = [item for sublist in fake_faces for item in sublist]
         img_diffs = []
         for real_face, fake_face in zip(real_faces, fake_faces):
-            img_diffs.append(np.mean(np.abs(real_face - fake_face)))
+            img_diffs.append(np.mean(cv2.absdiff(real_face, fake_face)))
 
         real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
             zip(real_faces, fake_faces, img_diffs),
@@ -62,56 +59,93 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes,
         selected_fake_faces = []
         for fake_face, face_diff in zip(fake_faces, img_diffs):
             print('face diff: ', face_diff)
-            if face_diff > 80:
+            if len(selected_fake_faces) == 0:
                 selected_fake_faces.append(fake_face)
-                if len(selected_fake_faces) >= max_fakes:
-                    break
+            elif face_diff > MIN_FACE_DIFF:
+                selected_fake_faces.append(fake_face)
+            if len(selected_fake_faces) >= max_fakes or face_diff <= MIN_FACE_DIFF:
+                break
 
-        resized_real = []
-        for face in real_faces:
-            face = cv2.resize(face, (face_size, face_size))
-            resized_real.append(face)
-        resized_fake = []
-        for face in selected_fake_faces:
-            face = cv2.resize(face, (face_size, face_size))
-            resized_fake.append(face)
-
-        return resized_real[:REAL_TO_FAKE_RATIO*max_fakes], resized_fake, real_detection
+        # NOTE these are not resized to same size
+        return real_faces[:REAL_TO_FAKE_RATIO*max_fakes], selected_fake_faces, real_detection
 
     return [], [], real_detection    
 
 
-def process_single(detector, vid_path, label, max_faces, face_size):
+def process_single(detector, vid_path, label, max_faces):
     imgs, imrs, scale = process_utils.parse_vid(vid_path, constants.MAX_DETECTION_SIZE,
-        constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
+        constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, 3) #constants.SKIP_INITIAL_SEC)
 
     faces, tracks = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, 
-            scale, face_size, keep_tracks=1)
+            scale, 0, keep_tracks=1)
     
     faces = [item for sublist in faces for item in sublist]
     
     return random.sample(faces, min(len(faces), max_faces))
 
 
+def pad_images_to_same_size(images):
+    """
+    :param images: sequence of images
+    :return: list of images padded so that all images have same width and height (max width and height are used)
+    """
+    width_max = 0
+    height_max = 0
+    for img in images:
+        h, w = img.shape[:2]
+        width_max = max(width_max, w)
+        height_max = max(height_max, h)
+
+    images_padded = []
+    for img in images:
+        h, w = img.shape[:2]
+        diff_vert = height_max - h
+        pad_top = diff_vert//2
+        pad_bottom = diff_vert - pad_top
+        diff_hori = width_max - w
+        pad_left = diff_hori//2
+        pad_right = diff_hori - pad_left
+        img_padded = cv2.copyMakeBorder(img, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, value=0)
+        assert img_padded.shape[:2] == (height_max, width_max)
+        images_padded.append(img_padded)
+
+    return images_padded
+
+
 def imwrite_tiled_faces(real_faces, fake_faces):
-    if len(fake_faces) > 0:
-        assert len(real_faces) >= len(fake_faces)
-        real_faces = real_faces[:len(fake_faces)]
-        im_real = cv2.hconcat(real_faces)
-        im_fake = cv2.hconcat(fake_faces)
+    print(len(real_faces), len(fake_faces))
+    assert len(real_faces) >= len(fake_faces)
+    masks = []
+    real_faces = real_faces[:len(fake_faces)]
+    for i in range(len(fake_faces)):
+        im_real = real_faces[i]
+        im_fake = fake_faces[i]
         im_diff = cv2.absdiff(im_real, im_fake)
         mask = cv2.cvtColor(im_diff, cv2.COLOR_RGB2GRAY)
         imask =  mask > 5
         canvas = np.zeros_like(im_fake, np.uint8)
         canvas[imask] = im_fake[imask]
-        im = cv2.vconcat([im_real, im_fake, canvas])
-        cv2.imwrite('selected_faces.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
+        masks.append(canvas)
+        # print(im_real, im_fake)
+        # print(im_diff, np.sum(im_diff), np.mean(im_diff))
+    
+    if len(fake_faces) > 0:
+        real_imgs = cv2.hconcat(pad_images_to_same_size(real_faces))
+        fake_imgs = cv2.hconcat(pad_images_to_same_size(fake_faces))
+        mask_imgs = cv2.hconcat(pad_images_to_same_size(masks))
+        img = cv2.vconcat([real_imgs, fake_imgs, mask_imgs])
+        cv2.imwrite('selected_faces.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
 
 
-def imwrite_faces(output_dir, vid_file, faces):    
+def imwrite_faces(output_dir, vid_file, faces, face_size, keep_aspect=KEEP_ASPECT):
+    print(len(faces))
     for i, face in enumerate(faces):
         file_name = os.path.join(output_dir, vid_file + '_' + str(i) + '.png')
-        cv2.imwrite(file_name, cv2.cvtColor(face, cv2.COLOR_RGB2BGR))
+        if keep_aspect:
+            resized_face = process_utils.square_resize(face, face_size)
+        else:
+            resized_face = cv2.resize(face, (face_size, face_size))
+        cv2.imwrite(file_name, cv2.cvtColor(resized_face, cv2.COLOR_RGB2BGR))
 
 
 def run(detector, input_dir, max_fakes, face_size):
@@ -132,22 +166,22 @@ def run(detector, input_dir, max_fakes, face_size):
             fake_file_path = os.path.join(input_dir, file_name)
             if os.path.exists(real_file_path) and os.path.exists(fake_file_path):
                 real_faces, selected_fake_faces, real_detection = process_pair(
-                    detector, real_file_path, fake_file_path, track_cache, max_fakes, face_size)
+                    detector, real_file_path, fake_file_path, track_cache, max_fakes)
                 if real_detection:
-                    imwrite_faces(writing_dir_0, real_file, real_faces)
-                imwrite_faces(writing_dir_1, file_name, selected_fake_faces)
+                    imwrite_faces(writing_dir_0, real_file, real_faces, face_size)
+                imwrite_faces(writing_dir_1, file_name, selected_fake_faces, face_size)
 
 
 def run_label(detector, input_dir, max_faces, label, face_size):
 
-    writing_dir = os.path.join(input_dir, label)
+    writing_dir = os.path.join(input_dir, str(face_size), label)
     os.makedirs(writing_dir, exist_ok=True)
     file_list = glob.glob(input_dir + '/*.mp4')
 
     for file_path in tqdm.tqdm(file_list):
         file_name = os.path.basename(file_path)
-        faces = process_single(detector, file_path, int(label), max_faces, face_size)
-        imwrite_faces(writing_dir, file_name, faces)
+        faces = process_single(detector, file_path, int(label), max_faces)
+        imwrite_faces(writing_dir, file_name, faces, face_size)
 
 
 if __name__ == '__main__':
@@ -166,22 +200,23 @@ if __name__ == '__main__':
     detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
         post_process=False, keep_all=False, select_largest=False)
 
+    dirs = glob.glob(args.input_dirs)
+    label = args.label
+    face_size = args.face_size
+
     # DEBUG stuff
     # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
     # print(tracks)
     # DEBUG stuff
     # real_faces, fake_faces, real_detection = process_pair(
     #     detector,
-    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/wcqvzujamg.mp4",
-    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/dtjcyzgdts.mp4",
+    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/ldtgofdaqg.mp4",
+    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/kfgdvqjuzu.mp4",
     #     track_cache,
     #     5,
     # )
+    # print(real_faces, fake_faces)
     # imwrite_tiled_faces(real_faces, fake_faces)
-
-    dirs = glob.glob(args.input_dirs)
-    label = args.label
-    face_size = args.face_size
 
     for dir in dirs:
         if 'json' in label:

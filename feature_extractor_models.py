@@ -27,11 +27,12 @@ def InceptionLayer(a, b, c, d):
 
 
 class MesoInception4():
-    def __init__(self, learning_rate = 0.001):
+    def __init__(self, input_shape):
+        self.input_shape = input_shape
         self.model = self.init_model()
     
     def init_model(self):
-        x = Input(shape = (256, 256, 3))
+        x = Input(shape=self.input_shape)
         
         x1 = InceptionLayer(1, 4, 4, 2)(x)
         x1 = BatchNormalization()(x1)
@@ -60,12 +61,13 @@ class MesoInception4():
 
 
 class MesoInception5():
-    def __init__(self, width):
+    def __init__(self, width, input_shape):
         self.width = width
+        self.input_shape = input_shape
         self.model = self.init_model()
         
     def init_model(self):
-        x = Input(shape = (224, 224, 3))
+        x = Input(shape=self.input_shape)
         
         x1 = InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
         x1 = BatchNormalization()(x1)

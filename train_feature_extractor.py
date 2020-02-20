@@ -48,9 +48,10 @@ def get_label(file_path):
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
-    
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
+    img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0, 
+        target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
     
     # Xception
     # img = tf.cast(img, tf.float32)
@@ -98,7 +99,8 @@ def balance_dataset(dset):
     negative_ds = dset.filter(lambda features, label: label==0)
     # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
     # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
-    positive_ds = dset.filter(lambda features, label: label==1).take(6239)
+    # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
+    positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
     # print('Negative dataset class fractions: ', class_fractions(negative_ds))
     # print('Positive dataset class fractions: ', class_fractions(positive_ds))
     
@@ -191,6 +193,7 @@ def compile_model(model, mode, lr):
         # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
         tf.keras.metrics.BinaryCrossentropy(),
         # lr_metric,
+        # Write TensorBoard logs to `./logs` directory
     ]
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
@@ -207,8 +210,11 @@ def compile_model(model, mode, lr):
 
 def create_meso_model(input_shape, mode):
 
-    # classifier = featx.MesoInception4()
-    classifier = featx.MesoInception5(width=1)
+    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+
+    # classifier = featx.MesoInception4(input_shape)
+    # meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
+    # classifier.model.load_weights(meso4_weights)
 
     if mode == 'train':
         print('\nFreezing all conv Meso layers!')
@@ -405,7 +411,7 @@ if __name__ == '__main__':
     num_epochs = 1000
     # validation_steps = 32
     batch_size = int(args.batch_size)
-    in_shape = constants.FEAT_SHAPE
+    in_shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3)
 
     custom_objs = {
         'fraction_positives': fraction_positives,
@@ -417,8 +423,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model = create_efficientnet_model(in_shape, args.mode)
-        model = create_onemil_model(in_shape, args.mode)
+        model = create_meso_model(in_shape, args.mode)
+        # model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -463,6 +469,7 @@ if __name__ == '__main__':
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
+            tf.keras.callbacks.TensorBoard(log_dir='./train_featx_logs'),
         ]
 
         class_weight={0: 0.54, 1: 0.46}

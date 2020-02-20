@@ -132,3 +132,32 @@ def detect_faces_no_tracks(detector, images, batch_size, face_size):
                     faces.append(face_extract)
     
     return faces
+
+
+def isotropically_resize_image(img, size, resample=cv2.INTER_AREA):
+    h, w = img.shape[:2]
+    if w > h:
+        h = h * size // w
+        w = size
+    else:
+        w = w * size // h
+        h = size
+
+    resized = cv2.resize(img, (w, h), interpolation=resample)
+    return resized
+
+
+def make_square_image(img):
+    h, w = img.shape[:2]
+    size = max(h, w)
+    t = (size - h) // 2
+    b = (size - h) - t
+    l = (size - w) // 2
+    r = (size - w) - l
+    return cv2.copyMakeBorder(img, t, b, l, r, cv2.BORDER_CONSTANT, value=0)
+
+
+def square_resize(img, input_size):
+    resized_img = isotropically_resize_image(img, input_size)
+    resized_img = make_square_image(resized_img)
+    return resized_img
