@@ -423,8 +423,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model = create_meso_model(in_shape, args.mode)
-        # model = create_onemil_model(in_shape, args.mode)
+        # model = create_meso_model(in_shape, args.mode)
+        model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
