@@ -102,8 +102,9 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
     faces = get_faces_from_tracks(originals, tracks[:keep_tracks], img_scale)
 
     if face_size > 0:
-        for face in faces:
-            face = cv2.resize(face, (face_size, face_size))
+        for track_face in faces:
+            for face in track_face:
+                face = cv2.resize(face, (face_size, face_size))
     # print(faces, tracks)
     return faces, tracks[:keep_tracks]
 
