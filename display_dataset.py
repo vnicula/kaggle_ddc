@@ -7,8 +7,6 @@ import pickle
 import tensorflow as tf
 
 NUM_ROWS = 16
-SEQ_LEN = 30
-FEAT_SHAPE = (224, 224, 3)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
