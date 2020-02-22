@@ -97,7 +97,7 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
                     detections.append(boxes)
 
     tracks = iou_tracker.track_iou(
-        detections, 0.8, 0.9, 0.1, constants.MIN_TRACK_FACES)
+        detections, 0.85, 0.95, 0.1, constants.MIN_TRACK_FACES)
 
     # TODO remove this
     # Can't use anything since it's multitrack fake

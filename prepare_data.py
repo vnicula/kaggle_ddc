@@ -59,7 +59,7 @@ def get_numpys(data):
         sample_f = np.zeros((constants.SEQ_LEN,) + constants.FEAT_SHAPE, dtype=np.float32)
         mask = np.zeros(constants.SEQ_LEN, dtype=np.float32)
         for indx in range(data_seq_len):
-            sample[indx] = (data[key][1][indx].astype(np.float32) / 127.5) - 1.0
+            sample[indx] = data[key][1][indx].astype(np.float32) / 255.0
             if label == 0:
                 sample_f[indx] = np.fliplr(sample[indx])
             mask[indx] = 1.0

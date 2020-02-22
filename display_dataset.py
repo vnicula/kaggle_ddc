@@ -1,4 +1,5 @@
 import argparse
+import constants
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -79,8 +80,8 @@ def display_tfrecord(rec_file):
     feature_description = {
         'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
         'name': tf.io.FixedLenFeature([], tf.string, default_value=''),
-        'sample': tf.io.FixedLenFeature([30, 224, 224, 3], tf.float32),
-        'mask': tf.io.FixedLenFeature([30], tf.float32),
+        'sample': tf.io.FixedLenFeature([constants.SEQ_LEN, constants.TRAIN_FACE_SIZE, constants.TRAIN_FACE_SIZE, 3], tf.float32),
+        'mask': tf.io.FixedLenFeature([constants.SEQ_LEN], tf.float32),
     }
 
     def _parse_function(example_proto):
@@ -102,7 +103,7 @@ def display_tfrecord(rec_file):
 
     for features in parsed_dataset:
 
-        samples.append((features['sample'].numpy() + 1.0) * 127.5)
+        samples.append(features['sample'].numpy() * 255.0)
         keys.append(features['name'].numpy())
         labels.append(features['label'].numpy())
         masks.append(features['mask'].numpy())

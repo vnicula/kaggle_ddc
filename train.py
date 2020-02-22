@@ -96,7 +96,8 @@ def tfrecords_dataset(input_dir, is_training):
 
     def _parse_function(example_proto):
         example = tf.io.parse_single_example(example_proto, feature_description)
-        sample = (example['sample'] + 1.0) / 2
+        # sample = (example['sample'] + 1.0) / 2
+        sample = example['sample']
         if is_training:
             return {'input_1': sample, 'input_2': example['mask']}, example['label']
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
