@@ -8,7 +8,7 @@ import os
 import tensorflow as tf
 import time
 
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
+# from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -50,8 +50,8 @@ def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
-    img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0, 
-        target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
+    # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0, 
+    #     target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
     
     # Xception
     # img = tf.cast(img, tf.float32)
@@ -69,10 +69,11 @@ def augment(x: tf.Tensor) -> tf.Tensor:
         Augmented image
     """
     # x = tf.image.random_hue(x, 0.08)
-    x = tf.image.random_saturation(x, 0.6, 1.6)
-    x = tf.image.random_brightness(x, 0.05)
+    # x = tf.image.random_saturation(x, 0.6, 1.6)
+    x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.7, 1.3)
     x = tf.image.random_flip_left_right(x)
+    x = tf.image.random_jpeg_quality(x, min_jpeg_quality=80, max_jpeg_quality=100)
     return x
 
 
@@ -96,12 +97,12 @@ def class_func(feat, label):
 
 
 def balance_dataset(dset):
-    negative_ds = dset.filter(lambda features, label: label==0)
+    negative_ds = dset.filter(lambda features, label: label==0).take(36267) # eval 0-9
     # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
     # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
     # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
     # positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
-    positive_ds = dset.filter(lambda features, label: label==1).take(37658) # eval 0-9
+    positive_ds = dset.filter(lambda features, label: label==1)
     # print('Negative dataset class fractions: ', class_fractions(negative_ds))
     # print('Positive dataset class fractions: ', class_fractions(positive_ds))
     
@@ -476,11 +477,11 @@ if __name__ == '__main__':
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
-            tf.keras.callbacks.TensorBoard(log_dir='./train_featx_logs'),
+            # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_logs'),
         ]
 
-        # class_weight={0: 0.54, 1: 0.46}
-        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
+        class_weight={0: 0.45, 1: 0.55}
+        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
         

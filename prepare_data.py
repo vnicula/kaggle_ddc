@@ -153,7 +153,7 @@ def run(input_dir, from_label, slice_size, first_slice):
             print('Processed name: {}, faces {}, label {}'.format(f_path, len(faces), label))
         
         if len(dataset_slice) >= slice_size:
-            slice_name = os.path.join(input_dir, "%s_%s.tfrec" % (slice_prefix, slices))
+            slice_name = os.path.join(input_dir, "%s_%s_%s.tfrec" % (str(constants.TRAIN_FACE_SIZE), slice_prefix, slices))
             names, samples, masks, labels = get_numpys(dataset_slice)
             save_numpy_to_tfrecords(names, samples, masks, labels, slice_name)
             print('written file {} samples {}, labels {}, sample shape {}.'.format(
@@ -164,7 +164,7 @@ def run(input_dir, from_label, slice_size, first_slice):
     
     # Write the last incomplete slice    
     if len(dataset_slice) > 0:
-        slice_name = os.path.join(input_dir, "%s_%s.tfrec" % (slice_prefix, slices))
+        slice_name = os.path.join(input_dir, "%s_%s_%s.tfrec" % (str(constants.TRAIN_FACE_SIZE), slice_prefix, slices))
         names, samples, masks, labels = get_numpys(dataset_slice)
         save_numpy_to_tfrecords(names, samples, masks, labels, slice_name)
         print('written file {} samples {}, labels {}, sample shape {}.'.format(
