@@ -56,12 +56,9 @@ def get_numpys(data):
         my_seq_len = len(data[key][1])
         data_seq_len = min(my_seq_len, constants.SEQ_LEN)
         sample = np.zeros((constants.SEQ_LEN,) + constants.FEAT_SHAPE, dtype=np.float32)
-        sample_f = np.zeros((constants.SEQ_LEN,) + constants.FEAT_SHAPE, dtype=np.float32)
         mask = np.zeros(constants.SEQ_LEN, dtype=np.float32)
         for indx in range(data_seq_len):
             sample[indx] = data[key][1][indx].astype(np.float32) / 255.0
-            if label == 0:
-                sample_f[indx] = np.fliplr(sample[indx])
             mask[indx] = 1.0
 
         names.append(key)
@@ -69,13 +66,7 @@ def get_numpys(data):
         masks.append(mask)
         labels.append(label)
 
-        if label == 0:
-            names.append(key+'_f')
-            samples.append(sample_f)
-            masks.append(mask)
-            labels.append(0)
-            # save_sample_img(key+'_o', 0, sample)
-            # save_sample_img(key+'_f', 0, sample_f)
+        # save_sample_img(key, label, sample)
 
     return names, samples, masks, labels
 
