@@ -77,24 +77,28 @@ class MesoInception5():
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
         
-        x3 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x2)
+        x3 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x2)
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x3)
+        x4 = InceptionLayer(16*self.width, 16*self.width, 16*self.width, 16*self.width)(x3)
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)        
 
-        x5 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x4)
+        x5 = InceptionLayer(32*self.width, 32*self.width, 32*self.width, 32*self.width)(x4)
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
         
+        x6 = InceptionLayer(32*self.width, 32*self.width, 32*self.width, 32*self.width)(x5)
+        x6 = BatchNormalization()(x6)
+        x6 = MaxPooling2D(pool_size=(2, 2), padding='same')(x6)
+
         # x6 = Conv2D(64*self.width, (1, 1), padding='same', activation = 'relu')(x5)
         # x6 = BatchNormalization()(x6)
         # x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
         # x6 = GlobalAveragePooling2D()(x5)
         
-        y = Flatten()(x5)
+        y = Flatten()(x6)
         y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
         # y = Dense(32*self.width)(y)

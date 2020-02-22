@@ -14,8 +14,8 @@ import tqdm
 from facenet_pytorch import MTCNN
 
 REAL_TO_FAKE_RATIO = 3
-KEEP_ASPECT = True
-MIN_FACE_DIFF = 3.5
+KEEP_ASPECT = False
+MIN_FACE_DIFF = 5
 
 def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
@@ -144,7 +144,7 @@ def imwrite_faces(output_dir, vid_file, faces, face_size, keep_aspect=KEEP_ASPEC
         if keep_aspect:
             resized_face = process_utils.square_resize(face, face_size)
         else:
-            resized_face = cv2.resize(face, (face_size, face_size))
+            resized_face = cv2.resize(face, (face_size, face_size), interpolation = cv2.INTER_LINEAR)
         cv2.imwrite(file_name, cv2.cvtColor(resized_face, cv2.COLOR_RGB2BGR))
 
 
@@ -192,6 +192,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dirs', type=str)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--label', type=str, default='json')
+    parser.add_argument('--max_faces', type=int, default=5)
     parser.add_argument('--face_size', type=int, default=constants.TRAIN_FACE_SIZE)
     args = parser.parse_args()
 
@@ -220,12 +221,12 @@ if __name__ == '__main__':
 
     for dir in dirs:
         if 'json' in label:
-            run(detector, dir, 5, face_size)
+            run(detector, dir, args.max_faces, face_size)
         else:
-            run_label(detector, dir, 5, label, face_size)
+            run_label(detector, dir, args.max_faces, label, face_size)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
 
     del detector
-    torch.cuda.empty_cache()
+    # torch.cuda.empty_cache()

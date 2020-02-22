@@ -100,7 +100,8 @@ def balance_dataset(dset):
     # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
     # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
     # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
-    positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
+    # positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
+    positive_ds = dset.filter(lambda features, label: label==1).take(37658) # eval 0-9
     # print('Negative dataset class fractions: ', class_fractions(negative_ds))
     # print('Positive dataset class fractions: ', class_fractions(positive_ds))
     
@@ -217,10 +218,10 @@ def create_meso_model(input_shape, mode):
     # classifier.model.load_weights(meso4_weights)
 
     if mode == 'train':
-        print('\nFreezing all conv Meso layers!')
-        for layer in classifier.model.layers:
-            if 'dense' not in layer.name:
-                layer.trainable = False
+        print('\nUnfreezing all conv Meso layers!')
+        # for layer in classifier.model.layers:
+        #     if 'dense' not in layer.name:
+        #         layer.trainable = False
     if mode == 'tune':
         print('\nUnfreezing all Meso layers!')
 
@@ -429,7 +430,7 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model = create_efficientnet_model(in_shape, args.mode)
+        model = create_meso_model(in_shape, args.mode)
         # model = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
@@ -478,8 +479,8 @@ if __name__ == '__main__':
             tf.keras.callbacks.TensorBoard(log_dir='./train_featx_logs'),
         ]
 
-        class_weight={0: 0.54, 1: 0.46}
-        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
+        # class_weight={0: 0.54, 1: 0.46}
+        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
         

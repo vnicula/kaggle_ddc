@@ -134,7 +134,7 @@ def detect_faces_no_tracks(detector, images, batch_size, face_size):
     return faces
 
 
-def isotropically_resize_image(img, size, resample=cv2.INTER_AREA):
+def isotropically_resize_image(img, size, resample=cv2.INTER_LINEAR):
     h, w = img.shape[:2]
     if w > h:
         h = h * size // w
