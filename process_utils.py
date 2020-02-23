@@ -90,14 +90,14 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         if (frames_boxes is not None) and (len(frames_boxes) > 0):
             # print(frames_boxes, frames_confidences)
             for i in range(len(frames_boxes)):
+                boxes = []
                 if frames_boxes[i] is not None:
-                    boxes = []
                     for box, confidence in zip(frames_boxes[i], frames_confidences[i]):
                         boxes.append({'bbox': box, 'score': confidence})
-                    detections.append(boxes)
+                detections.append(boxes)
 
     tracks = iou_tracker.track_iou(
-        detections, 0.85, 0.95, 0.1, constants.MIN_TRACK_FACES)
+        detections, 0.85, 0.95, 0.01, constants.MIN_TRACK_FACES)
 
     # TODO remove this
     # Can't use anything since it's multitrack fake
@@ -128,20 +128,24 @@ def detect_faces_no_tracks(detector, images, batch_size, face_size):
             # print(frames_boxes, frames_confidences)
             for i in range(len(frames_boxes)):
                 if frames_boxes[i] is not None:
-                    for bbox in frames_boxes[i]:
-                        (x, y, w, h) = (
-                            max(int(bbox[0]) - constants.MARGIN, 0),
-                            max(int(bbox[1]) - constants.MARGIN, 0),
-                            int(bbox[2]-bbox[0]) + 2*constants.MARGIN,
-                            int(bbox[3]-bbox[1]) + 2*constants.MARGIN
-                        )
-                    image = images[i]
-                    # Without copy() memory leak with GPU
-                    face_extract = image[y:y+h, x:x+w].copy()
-                    if face_size > 0:
-                        face_extract = cv2.resize(
-                            face_extract, (face_size, face_size))
-                    faces.append(face_extract)
+                    boxes = []
+                    for bbox, confidence in zip(frames_boxes[i], frames_confidences[i]):
+                        if confidence > constants.MIN_FACE_CONFIDENCE:
+                            (x, y, w, h) = (
+                                max(int(bbox[0]) - constants.MARGIN, 0),
+                                max(int(bbox[1]) - constants.MARGIN, 0),
+                                int(bbox[2]-bbox[0]) + 2*constants.MARGIN,
+                                int(bbox[3]-bbox[1]) + 2*constants.MARGIN
+                            )
+                            image = images[i]
+                            # Without copy() memory leak with GPU
+                            face_extract = image[y:y+h, x:x+w].copy()
+                            if face_size > 0:
+                                face_extract = cv2.resize(
+                                    face_extract, (face_size, face_size))
+                            boxes.append(face_extract)
+                    if len(boxes) > 0:
+                        faces.append(boxes)
 
     return faces
 

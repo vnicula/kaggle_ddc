@@ -36,6 +36,7 @@ def extract_one_sample_bbox(video_path, label, max_detection_size, max_frame_cou
         max_frame_count, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
     parsing = time.time() - start
     # faces = detect_facenet_pytorch(detector, imgs, 256)
+    # faces = process_utils.detect_faces_no_tracks(detector, imgs, 256, face_size)
     faces, _ = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, img_scale, face_size, keep_tracks)
     # print('faces: ', faces)
     detection = time.time() - start - parsing
@@ -169,17 +170,6 @@ def run(input_dir, from_label, slice_size, first_slice):
 #return larger face area with larger margin
 if __name__ == '__main__':
 
-    # faces = extract_one_sample_bbox(
-    #     'test_videos/aljjmeqszq.mp4', label=0,
-    #     # 'H:/Downloads/dfdc_train_part_15/ajquhoecmv.mp4',
-    #     # 'H:/Downloads/dfdc_train_part_15\gobvnzkjaf.mp4',
-    #     max_detection_size=MAX_DETECTION_SIZE, max_frame_count=TRAIN_FRAME_COUNT, face_size=TRAIN_FACE_SIZE)
-    # print('Faces detected: {}'.format(len(faces)))
-    # for face in faces:
-    #     for i in range(min(10, len(face))):
-    #         plt.imshow(face[i])
-    #         plt.show()
-
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
@@ -188,9 +178,27 @@ if __name__ == '__main__':
     parser.add_argument('--label', type=str, default='json')
     args = parser.parse_args()
 
-    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
+    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=32, 
         post_process=False, keep_all=True, select_largest=False)
 
+    # faces = extract_one_sample_bbox(
+    #     # 'test_videos/aljjmeqszq.mp4',
+    #     # 'H:/Downloads/dfdc_train_part_15/ajquhoecmv.mp4',
+    #     # 'H:/Downloads/dfdc_train_part_15\gobvnzkjaf.mp4',
+    #     '/raid/scratch/tf_train/dset/train/dfdc_train_part_2/zktfvbaupk.mp4',
+    #     label=1,
+    #     max_detection_size=constants.MAX_DETECTION_SIZE,
+    #     max_frame_count=constants.TRAIN_FRAME_COUNT,
+    #     face_size=constants.TRAIN_FACE_SIZE,
+    #     keep_tracks=1
+    # )
+    # print('Faces detected: {}'.format(len(faces)))
+    # for j, face in enumerate(faces):
+    #     for i in range(min(10, len(face))):
+    #         plt.imshow(face[i])
+    #         plt.savefig('debug_%s_%s' % (str(j), str(i)))
+
+ 
     for input_dir in glob.glob(args.input_dirs):
         run(input_dir, args.label, slice_size=256, first_slice=0)
 
