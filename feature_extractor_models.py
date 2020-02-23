@@ -205,7 +205,12 @@ class OneMIL():
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
 
-        y = Flatten()(x4)
+        x5 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x4)
+        x5 = BatchNormalization()(x5)
+        x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
+
+        y = Flatten()(x5)
+
         # y = Dropout(0.5)(y)
         # y = Dense(32*self.width)(y)
         # y = LeakyReLU(alpha=0.1)(y)
@@ -235,20 +240,23 @@ class OneMIL():
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
         
+        x6 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x5)
+        x6 = BatchNormalization()(x6)
+        x6 = MaxPooling2D(pool_size=(2, 2), padding='same')(x6)
         # x6 = Conv2D(64*self.width, (1, 1), padding='same', activation = 'relu')(x5)
         # x6 = BatchNormalization()(x6)
         # x6 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x6)
         # x6 = GlobalAveragePooling2D()(x5)
         
-        y = Flatten()(x5)
-        y = Dropout(0.5)(y)
+        y = Flatten()(x6)
+        # y = Dropout(0.5)(y)
         #TODO investigate num units for this dense layer.
         # y = Dense(32*self.width)(y)
         # y = LeakyReLU(alpha=0.1)(y)
         # y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(y)
+        # y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(y)
 
-        return Model(inputs = x, outputs = y)
+        return Model(inputs=x, outputs=y)
 
     def create_mil_models(self):
         self.left_up_model = self.mil_backbone(self.mil_input_shape)
@@ -304,11 +312,11 @@ class OneMIL():
         center_out = self.center_model(center_input)
         full_out = self.full_model(x_input)
 
-        all_outs = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
+        all_outs = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out, full_out], axis=1)
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
         mil_out = keras_utils.SeqWeightedAttention()(all_outs)
         mil_out = Dropout(0.5)(mil_out)
         mil_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.002))(mil_out)
-        out = 0.5 * mil_out + 0.5 * full_out
+        # out = 0.5 * mil_out + 0.5 * full_out
 
-        return Model(inputs=x_input, outputs=out)
+        return Model(inputs=x_input, outputs=mil_out)
