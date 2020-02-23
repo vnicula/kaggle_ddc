@@ -73,7 +73,7 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.7, 1.3)
     x = tf.image.random_flip_left_right(x)
-    x = tf.image.random_jpeg_quality(x, min_jpeg_quality=80, max_jpeg_quality=100)
+    x = tf.image.random_jpeg_quality(x, min_jpeg_quality=50, max_jpeg_quality=100)
     return x
 
 
