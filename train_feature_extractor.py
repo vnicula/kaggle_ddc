@@ -50,12 +50,12 @@ def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
-    # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0, 
+    # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0,
     #     target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
-    
+
     # Xception
     # img = tf.cast(img, tf.float32)
-    
+
     # resize the image to the desired size.
     # img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
     return img
@@ -73,7 +73,8 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.7, 1.3)
     x = tf.image.random_flip_left_right(x)
-    x = tf.image.random_jpeg_quality(x, min_jpeg_quality=50, max_jpeg_quality=100)
+    x = tf.image.random_jpeg_quality(
+        x, min_jpeg_quality=50, max_jpeg_quality=100)
     return x
 
 
@@ -87,7 +88,7 @@ def process_path(file_path):
     # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
 
     # minimal augmentation
-    img = augment(img)    
+    img = augment(img)
 
     return img, label
 
@@ -96,16 +97,41 @@ def class_func(feat, label):
     return label
 
 
+def count(counts, batch):
+    features, labels = batch
+    class_1 = labels == 1
+    class_1 = tf.cast(class_1, tf.int32)
+
+    class_0 = labels == 0
+    class_0 = tf.cast(class_0, tf.int32)
+
+    counts['class_0'] += tf.reduce_sum(class_0)
+    counts['class_1'] += tf.reduce_sum(class_1)
+
+    return counts
+
+
+def class_fractions(dset):
+    counts = dset.reduce(
+        initial_state={'class_0': 0, 'class_1': 0}, reduce_func=count)
+    counts = np.array([counts['class_0'].numpy(),
+                       counts['class_1'].numpy()]).astype(np.float32)
+    fractions = counts/counts.sum()
+
+    return fractions, counts
+
+
 def balance_dataset(dset):
-    negative_ds = dset.filter(lambda features, label: label==0).take(36267) # eval 0-9
+
+    negative_ds = dset.filter(
+        lambda features, label: label == 0)
+        # lambda features, label: label == 0).take(36267)  # eval 0-9
     # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
     # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
     # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
     # positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
-    positive_ds = dset.filter(lambda features, label: label==1)
-    # print('Negative dataset class fractions: ', class_fractions(negative_ds))
-    # print('Positive dataset class fractions: ', class_fractions(positive_ds))
-    
+    positive_ds = dset.filter(lambda features, label: label == 1)
+
     balanced_ds = tf.data.experimental.sample_from_datasets(
         [negative_ds, positive_ds], [0.5, 0.5]
     )
@@ -125,7 +151,8 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=6000
         # ds = ds.apply(resampler)
         # ds = ds.map(lambda extra_label, features_and_label: features_and_label)
 
-        ds = balance_dataset(ds)
+        # ds = balance_dataset(ds)
+        pass
 
     if cache:
         if isinstance(cache, str):
@@ -172,7 +199,7 @@ def compile_model(model, mode, lr):
 
     if mode == 'train' or mode == 'eval':
         optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.RMSProp(lr)  # (lr=0.025)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -200,10 +227,10 @@ def compile_model(model, mode, lr):
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(
-        # label_smoothing=0.025
-    )
-    # my_loss = binary_focal_loss(alpha=0.57)
+    # my_loss = tf.keras.losses.BinaryCrossentropy(
+    #     # label_smoothing=0.025
+    # )
+    my_loss = binary_focal_loss(alpha=0.47)
     # my_loss = 'mean_squared_error'
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
@@ -230,7 +257,7 @@ def create_meso_model(input_shape, mode):
         print(i, layer.name, layer.trainable)
     print(classifier.model.summary())
 
-    return classifier.model
+    return classifier.model, 'meso'
 
 
 def create_onemil_model(input_shape, mode):
@@ -242,7 +269,7 @@ def create_onemil_model(input_shape, mode):
 
     print(classifier.model.summary())
 
-    return classifier.model
+    return classifier.model, 'onemil'
 
 
 def create_xception_model(input_shape, mode):
@@ -251,8 +278,8 @@ def create_xception_model(input_shape, mode):
     # create the base pre-trained model
     xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
     print('Loading xception weights from: ', xception_weights)
-    base_model = Xception(weights=xception_weights, 
-        input_tensor=input_tensor, include_top=False, pooling='avg')
+    base_model = Xception(weights=xception_weights,
+                          input_tensor=input_tensor, include_top=False, pooling='avg')
 
     if mode == 'train':
         # print('\nFreezing all Xception layers!')
@@ -273,14 +300,15 @@ def create_xception_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    out = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
     for i, layer in enumerate(model.layers):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model
+    return model, 'xception'
 
 
 def create_mobilenet_model(input_shape, mode):
@@ -289,8 +317,8 @@ def create_mobilenet_model(input_shape, mode):
     # create the base pre-trained model
     mobilenet_weights = 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5'
     print('Loading mobilenet weights from: ', mobilenet_weights)
-    base_model = MobileNetV2(weights=mobilenet_weights, alpha = 0.5,
-        input_tensor=input_tensor, include_top=False, pooling='avg')
+    base_model = MobileNetV2(weights=mobilenet_weights, alpha=0.5,
+                             input_tensor=input_tensor, include_top=False, pooling='avg')
 
     if mode == 'train':
         print('\nFreezing all Mobilenet layers!')
@@ -315,14 +343,15 @@ def create_mobilenet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    out = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
     for i, layer in enumerate(model.layers):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model
+    return model, 'mobilenet'
 
 
 def create_efficientnet_model(input_shape, mode):
@@ -331,8 +360,8 @@ def create_efficientnet_model(input_shape, mode):
     # create the base pre-trained model
     efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor, 
-        include_top=False, pooling='avg')
+    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor,
+                                include_top=False, pooling='avg')
 
     if mode == 'train':
         print('\nFreezing all EfficientNet layers!')
@@ -362,14 +391,15 @@ def create_efficientnet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    out = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
     for i, layer in enumerate(model.layers):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model
+    return model, 'efficientnet'
 
 
 def create_resnet_model(input_shape, mode):
@@ -377,29 +407,7 @@ def create_resnet_model(input_shape, mode):
     model = featx.resnet_18(input_shape, num_filters=8)
     print(model.summary())
 
-    return model
-
-
-def count(counts, batch):
-  features, labels = batch
-  class_1 = labels == 1
-  class_1 = tf.cast(class_1, tf.int32)
-
-  class_0 = labels == 0
-  class_0 = tf.cast(class_0, tf.int32)
-
-  counts['class_0'] += tf.reduce_sum(class_0)
-  counts['class_1'] += tf.reduce_sum(class_1)
-
-  return counts
-
-
-def class_fractions(dset):
-    counts = dset.reduce(initial_state={'class_0': 0, 'class_1': 0}, reduce_func = count)
-    counts = np.array([counts['class_0'].numpy(), counts['class_1'].numpy()]).astype(np.float32)
-    fractions = counts/counts.sum()
-
-    return fractions, counts
+    return model, 'resnet'
 
 
 if __name__ == '__main__':
@@ -431,8 +439,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model = create_meso_model(in_shape, args.mode)
-        model = create_onemil_model(in_shape, args.mode)
+        # model, model_name = create_meso_model(in_shape, args.mode)
+        model, model_name = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -441,15 +449,16 @@ if __name__ == '__main__':
             print('\nTraining model from scratch.')
         compile_model(model, args.mode, args.lr)
 
-    eval_dataset = input_dataset(args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
-    fractions, counts = class_fractions(eval_dataset)
-    print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
+    eval_dataset = input_dataset(
+        args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
+    # fractions, counts = class_fractions(eval_dataset)
+    # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
     if args.mode == 'train' or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
-            cache=False
-            # cache='/raid/scratch/training_cache.mem'
-        )
+                                      cache=False
+                                      # cache='/raid/scratch/training_cache.mem'
+                                      )
 
         # lr_callback = LRFinder(num_samples=33501, batch_size=batch_size,
         #                minimum_lr=1e-5, maximum_lr=5e-1,
@@ -458,7 +467,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='featx_weights_{epoch}.h5',
+                filepath='featx_weights_%s_{epoch}.h5' % model_name,
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
@@ -471,33 +480,34 @@ if __name__ == '__main__':
                 min_delta=1e-4,
                 patience=25,
                 verbose=1),
-            tf.keras.callbacks.CSVLogger('training_featx_log.csv'),
+            tf.keras.callbacks.CSVLogger('training_featx_%s_log.csv' % model_name),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
-            # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_logs'),
+            # tf.keras.callbacks.TensorBoard(log_dir='./train_featx__%s_logs' % model_name),
         ]
 
-        class_weight={0: 0.45, 1: 0.55}
-        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight,
+        # class_weight = {0: 0.45, 1: 0.55}
+        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
-        
+
         # lr_callback.plot_schedule()
-        save_loss(history, 'final_featx_model')
+        save_loss(history, 'final_featx_%s_model' % model_name)
 
     elif args.mode == 'eval':
         model.evaluate(eval_dataset)
 
     if args.save == 'True':
-        model_file_name = args.mode + '_featx_full_model.h5'
+        model_file_name = args.mode + '_featx_full_%s_model.h5' % model_name
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
         model.save(model_file_name)
 
-        new_model = tf.keras.models.load_model(model_file_name, custom_objects=custom_objs)
+        new_model = tf.keras.models.load_model(
+            model_file_name, custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()
