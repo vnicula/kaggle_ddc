@@ -168,7 +168,7 @@ def resnet_18(input_shape, num_filters=64):
     X = tf.keras.layers.Flatten()(X)
     # X = tf.keras.layers.Dense(units=16*num_filters, activation=tf.nn.elu)(X)
     X = tf.keras.layers.Dropout(0.5)(X)
-    X = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.005))(X)
+    X = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(X)
 
     model = tf.keras.models.Model(inputs=X_input, outputs=X)
     return model
