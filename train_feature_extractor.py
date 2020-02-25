@@ -21,6 +21,8 @@ from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAtten
 
 tfkl = tf.keras.layers
 
+tf.random.set_seed(1234)
+
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -61,7 +63,16 @@ def decode_img(img):
     return img
 
 
-def augment(x: tf.Tensor) -> tf.Tensor:
+def random_jitter(image):
+    image = tf.image.resize(image, [284, 284],
+                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    image = tf.image.random_crop(
+        image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+
+    return image
+
+
+def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
     Args:
         x: Image
@@ -71,11 +82,12 @@ def augment(x: tf.Tensor) -> tf.Tensor:
     # x = tf.image.random_hue(x, 0.08)
     # x = tf.image.random_saturation(x, 0.6, 1.6)
     x = tf.image.random_brightness(x, 0.1)
-    x = tf.image.random_contrast(x, 0.7, 1.3)
+    x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
     x = tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=50, max_jpeg_quality=100)
-    return x
+        x, min_jpeg_quality=60, max_jpeg_quality=100)
+    x = random_jitter(x)
+    return (x, y)
 
 
 def process_path(file_path):
@@ -86,9 +98,6 @@ def process_path(file_path):
     # TODO make sure you take this out for non xception backbones
     # img = tf.keras.applications.xception.preprocess_input(img)
     # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-
-    # minimal augmentation
-    img = augment(img)
 
     return img, label
 
@@ -125,7 +134,7 @@ def balance_dataset(dset):
 
     negative_ds = dset.filter(
         lambda features, label: label == 0)
-        # lambda features, label: label == 0).take(36267)  # eval 0-9
+    # lambda features, label: label == 0).take(36267)  # eval 0-9
     # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
     # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
     # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
@@ -138,11 +147,26 @@ def balance_dataset(dset):
     return balanced_ds
 
 
-def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=60000):
+def augment_dataset(dset):
+
+    dset = dset.map(
+        image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    return dset
+
+
+def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=30000):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
 
+    if cache:
+        if isinstance(cache, str):
+            ds = ds.cache(cache)
+        else:
+            print('Caching dataset is_training: %s' % is_training)
+            ds = ds.cache()
+
     if is_training:
+        ds = augment_dataset(ds)
         ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     else:
         # TODO: seems rejection_resample doesn't work with keras fit
@@ -153,12 +177,6 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=6000
 
         # ds = balance_dataset(ds)
         pass
-
-    if cache:
-        if isinstance(cache, str):
-            ds = ds.cache(cache)
-        else:
-            ds = ds.cache()
 
     # Repeat forever
     # ds = ds.repeat()
@@ -404,7 +422,7 @@ def create_efficientnet_model(input_shape, mode):
 
 def create_resnet_model(input_shape, mode):
 
-    model = featx.resnet_18(input_shape, num_filters=8)
+    model = featx.resnet_18(input_shape, num_filters=4)
     print(model.summary())
 
     return model, 'resnet'
@@ -432,6 +450,7 @@ if __name__ == '__main__':
     custom_objs = {
         'fraction_positives': fraction_positives,
         'SeqWeightedAttention': SeqWeightedAttention,
+        'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
     }
 
     strategy = tf.distribute.MirroredStrategy()
@@ -439,8 +458,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        # model, model_name = create_meso_model(in_shape, args.mode)
-        model, model_name = create_onemil_model(in_shape, args.mode)
+        model, model_name = create_resnet_model(in_shape, args.mode)
+        # model, model_name = create_onemil_model(in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -450,13 +469,15 @@ if __name__ == '__main__':
         compile_model(model, args.mode, args.lr)
 
     eval_dataset = input_dataset(
-        args.eval_dir, is_training=False, batch_size=batch_size, cache=True)
+        args.eval_dir, is_training=False, batch_size=batch_size,
+        cache=False if args.mode == 'eval' else True
+    )
     # fractions, counts = class_fractions(eval_dataset)
     # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
     if args.mode == 'train' or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
-                                      cache=False
+                                      cache=True
                                       # cache='/raid/scratch/training_cache.mem'
                                       )
 
@@ -478,9 +499,10 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=25,
+                patience=20,
                 verbose=1),
-            tf.keras.callbacks.CSVLogger('training_featx_%s_log.csv' % model_name),
+            tf.keras.callbacks.CSVLogger(
+                'training_featx_%s_log.csv' % model_name),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
@@ -490,7 +512,7 @@ if __name__ == '__main__':
         ]
 
         # class_weight = {0: 0.45, 1: 0.55}
-        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight,
+        history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
                             callbacks=callbacks)
 

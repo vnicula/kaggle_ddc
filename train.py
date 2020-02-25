@@ -48,8 +48,6 @@ if gpus:
     # Memory growth must be set before GPUs have been initialized
     print(e)
 
-# TODO there's an input warning that input doesnt come from input layer
-# TODO use parallel_interleave
 
 D_MODEL = 784
 
@@ -196,7 +194,7 @@ def create_model(input_shape):
     # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     weights = 'one_model_weights.h5'
 
-    classifier = featx.MesoInception5(width=1)
+    classifier = featx.MesoInception5(input_shape[-3:], width=1)
     # print(classifier.model.summary())
     # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
     classifier.model.load_weights(weights)

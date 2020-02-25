@@ -218,11 +218,11 @@ class OneMIL():
         x1 = InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
         x1 = BatchNormalization()(x1)
         x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
-        
+
         x2 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x1)
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
-        
+
         x3 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x2)
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
@@ -235,7 +235,13 @@ class OneMIL():
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
 
-        y = Flatten()(x5)
+        # x5 = Conv2D(32, (3, 3), padding='same', activation = 'relu')(x4)
+        # x5 = BatchNormalization()(x5)
+        # x5 = MaxPooling2D(pool_size=(4, 4), padding='same')(x5)
+        
+        x6 = tf.keras.layers.GlobalAveragePooling2D()(x5)
+        
+        y = Flatten()(x6)
 
         # y = Dropout(0.5)(y)
         # y = Dense(32*self.width)(y)
