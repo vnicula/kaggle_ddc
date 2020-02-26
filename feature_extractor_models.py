@@ -215,37 +215,24 @@ class OneMIL():
 
         x = Input(shape=input_shape)
         
-        x1 = InceptionLayer(2*self.width, 2*self.width, 2*self.width, 2*self.width)(x)
+        x1 = InceptionLayer(1, 4, 4, 2)(x)
         x1 = BatchNormalization()(x1)
         x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
-
-        x2 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x1)
+        
+        x2 = InceptionLayer(2, 4, 4, 2)(x1)
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
-
-        x3 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x2)
+        
+        x3 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x2)
         x3 = BatchNormalization()(x3)
-        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
-
-        x4 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x3)
+        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
+        
+        x4 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x3)
         x4 = BatchNormalization()(x4)
-        x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)
-
-        x5 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x4)
-        x5 = BatchNormalization()(x5)
-        x5 = MaxPooling2D(pool_size=(2, 2), padding='same')(x5)
-
-        # x5 = Conv2D(32, (3, 3), padding='same', activation = 'relu')(x4)
-        # x5 = BatchNormalization()(x5)
-        # x5 = MaxPooling2D(pool_size=(4, 4), padding='same')(x5)
+        x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
         
-        x6 = tf.keras.layers.GlobalAveragePooling2D()(x5)
-        
-        y = Flatten()(x6)
-
-        # y = Dropout(0.5)(y)
-        # y = Dense(32*self.width)(y)
-        # y = LeakyReLU(alpha=0.1)(y)
+        y = Flatten()(x4)
+        y = Dropout(0.5)(y)
 
         return Model(inputs=x, outputs=y)
 
@@ -374,7 +361,7 @@ class OneMIL():
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
         mil_out = keras_utils.SeqWeightedAttention()(all_mil_outs)
         mil_out = Dropout(0.5)(mil_out)
-        mil_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(mil_out)
+        mil_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.05))(mil_out)
 
         # full_out = Dropout(0.5)(full_out)
         # full_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(full_out)

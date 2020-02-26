@@ -64,7 +64,7 @@ def decode_img(img):
 
 
 def random_jitter(image):
-    image = tf.image.resize(image, [284, 284],
+    image = tf.image.resize(image, [280, 280],
                             method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     image = tf.image.random_crop(
         image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
@@ -84,9 +84,10 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
+    # x = random_jitter(x)
     x = tf.image.random_jpeg_quality(
         x, min_jpeg_quality=60, max_jpeg_quality=100)
-    x = random_jitter(x)
+
     return (x, y)
 
 
@@ -132,14 +133,14 @@ def class_fractions(dset):
 
 def balance_dataset(dset):
 
+    fractions, counts = class_fractions(dset)
+    min_count = min(counts)
+    print('Fractions: {}, counts: {}, take {}.'.format(fractions, counts, min_count))
+
     negative_ds = dset.filter(
-        lambda features, label: label == 0)
-    # lambda features, label: label == 0).take(36267)  # eval 0-9
-    # num_neg_elements = tf.data.experimental.cardinality(negative_ds).numpy()
-    # positive_ds = dset.filter(lambda features, label: label==1).take(37436)
-    # positive_ds = dset.filter(lambda features, label: label==1).take(6239) # eval 0,1,2
-    # positive_ds = dset.filter(lambda features, label: label==1).take(12378)  # eval 0, 1, 2, 3, 4
-    positive_ds = dset.filter(lambda features, label: label == 1)
+        lambda features, label: label == 0).take(min_count)
+    positive_ds = dset.filter(
+        lambda features, label: label == 1).take(min_count)
 
     balanced_ds = tf.data.experimental.sample_from_datasets(
         [negative_ds, positive_ds], [0.5, 0.5]
@@ -166,8 +167,12 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=3000
             ds = ds.cache()
 
     if is_training:
-        ds = augment_dataset(ds)
         ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+
+    ds = balance_dataset(ds)
+
+    if is_training:
+        ds = augment_dataset(ds)
     else:
         # TODO: seems rejection_resample doesn't work with keras fit
         # resampler = tf.data.experimental.rejection_resample(
@@ -245,11 +250,12 @@ def compile_model(model, mode, lr):
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    # my_loss = tf.keras.losses.BinaryCrossentropy(
-    #     # label_smoothing=0.025
-    # )
-    my_loss = binary_focal_loss(alpha=0.47)
+    my_loss = tf.keras.losses.BinaryCrossentropy(
+        # label_smoothing=0.025
+    )
+    # my_loss = binary_focal_loss(alpha=0.5)
     # my_loss = 'mean_squared_error'
+    print('Using loss: %s' % my_loss)
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
     return model
@@ -257,13 +263,13 @@ def compile_model(model, mode, lr):
 
 def create_meso_model(input_shape, mode):
 
-    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+    # classifier = featx.MesoInception5(width=1, input_shape=input_shape)
 
-    # classifier = featx.MesoInception4(input_shape)
-    # meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
-    # classifier.model.load_weights(meso4_weights)
+    classifier = featx.MesoInception4(input_shape)
 
     if mode == 'train':
+        meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
+        classifier.model.load_weights(meso4_weights)
         print('\nUnfreezing all conv Meso layers!')
         # for layer in classifier.model.layers:
         #     if 'dense' not in layer.name:
@@ -275,7 +281,7 @@ def create_meso_model(input_shape, mode):
         print(i, layer.name, layer.trainable)
     print(classifier.model.summary())
 
-    return classifier.model, 'meso'
+    return classifier.model
 
 
 def create_onemil_model(input_shape, mode):
@@ -287,7 +293,7 @@ def create_onemil_model(input_shape, mode):
 
     print(classifier.model.summary())
 
-    return classifier.model, 'onemil'
+    return classifier.model
 
 
 def create_xception_model(input_shape, mode):
@@ -326,7 +332,7 @@ def create_xception_model(input_shape, mode):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model, 'xception'
+    return model
 
 
 def create_mobilenet_model(input_shape, mode):
@@ -339,18 +345,18 @@ def create_mobilenet_model(input_shape, mode):
                              input_tensor=input_tensor, include_top=False, pooling='avg')
 
     if mode == 'train':
-        print('\nFreezing all Mobilenet layers!')
+        # print('\nFreezing all Mobilenet layers!')
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last Mobilenet layers!')
-        # for layer in base_model.layers[:152]:
-        #     layer.trainable = False
-        # for layer in base_model.layers[152:]:
-        #     layer.trainable = True
-        for layer in base_model.layers[:135]:
+        for layer in base_model.layers[:152]:
             layer.trainable = False
-        for layer in base_model.layers[135:]:
+        for layer in base_model.layers[152:]:
             layer.trainable = True
+        # for layer in base_model.layers[:135]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[135:]:
+        #     layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something mobilenet layers!')
         for layer in base_model.layers[:126]:
@@ -369,7 +375,7 @@ def create_mobilenet_model(input_shape, mode):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model, 'mobilenet'
+    return model
 
 
 def create_efficientnet_model(input_shape, mode):
@@ -417,7 +423,7 @@ def create_efficientnet_model(input_shape, mode):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model, 'efficientnet'
+    return model
 
 
 def create_resnet_model(input_shape, mode):
@@ -425,7 +431,24 @@ def create_resnet_model(input_shape, mode):
     model = featx.resnet_18(input_shape, num_filters=4)
     print(model.summary())
 
-    return model, 'resnet'
+    return model
+
+
+def create_model(model_name, input_shape, mode):
+    if model_name == 'mobilenet':
+        return create_mobilenet_model(input_shape, mode)
+    if model_name == 'meso':
+        return create_meso_model(input_shape, mode)
+    if model_name == 'onemil':
+        return create_onemil_model(input_shape, mode)
+    if model_name == 'xception':
+        return create_xception_model(input_shape, mode)
+    if model_name == 'resnet':
+        return create_xception_model(input_shape, mode)
+    if model_name == 'efficientnet':
+        return create_efficientnet_model(input_shape, mode)
+
+    raise ValueError('Unknown model %s' % model_name)
 
 
 if __name__ == '__main__':
@@ -436,6 +459,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str)
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--model_name', type=str, default='unknown')
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
@@ -445,6 +469,7 @@ if __name__ == '__main__':
     num_epochs = 1000
     # validation_steps = 32
     batch_size = int(args.batch_size)
+    model_name = args.model_name
     in_shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3)
 
     custom_objs = {
@@ -458,8 +483,7 @@ if __name__ == '__main__':
 
     with strategy.scope():
         # due to bugs need to load weights for mirrored strategy - cannot load full model
-        model, model_name = create_resnet_model(in_shape, args.mode)
-        # model, model_name = create_onemil_model(in_shape, args.mode)
+        model = create_model(model_name, in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -477,7 +501,7 @@ if __name__ == '__main__':
 
     if args.mode == 'train' or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
-                                      cache=True
+                                      cache=False
                                       # cache='/raid/scratch/training_cache.mem'
                                       )
 
@@ -488,7 +512,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='featx_weights_%s_{epoch}.h5' % model_name,
+                filepath='featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
