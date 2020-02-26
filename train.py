@@ -80,9 +80,10 @@ def tfrecords_dataset(input_dir, is_training):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    dataset = balance_dataset(dataset)
     if is_training:
         dataset = dataset.shuffle(buffer_size=1000)
-    dataset = balance_dataset(dataset)
+
 
     return dataset
 
@@ -364,9 +365,9 @@ if __name__ == '__main__':
                 factor=0.96, patience=2, min_lr=5e-6, verbose=1, mode='min')
         ]
         
-        class_weight={0: 0.7, 1: 0.3}
+        # class_weight={0: 0.7, 1: 0.3}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
+        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, 'final_model')
