@@ -1,3 +1,26 @@
+def save_sample_img(name, label, values):
+    IMG_SIZE = values[0].shape[0]    
+
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 4
+    font_scale = 2
+
+    # line_shape = (IMG_SIZE, max_elems*IMG_SIZE, 3)
+    tile_shape = (IMG_SIZE, constants.SEQ_LEN*IMG_SIZE, 3)
+    tile_img = np.zeros(tile_shape, dtype=np.float32)
+    for j in range(len(values)):
+        color = (0, 255, 0) if label == 0 else (255, 0, 0)
+        cv2.putText(tile_img, name, (10, 50),
+                        font_face, font_scale,
+                        color, thickness, 2)
+        
+        tile_img[:, j*IMG_SIZE:(j+1)*IMG_SIZE, :] = values[j]
+
+    plt.imsave(name+'.jpg', tile_img)
+
+    return tile_img
+
+
 def azimuthalAverage(image, center=None):
     """
     Calculate the azimuthally averaged radial profile.

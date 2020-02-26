@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatena
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
-from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention
+from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset
 
 tfkl = tf.keras.layers
 
@@ -105,47 +105,6 @@ def process_path(file_path):
 
 def class_func(feat, label):
     return label
-
-
-def count(counts, batch):
-    features, labels = batch
-    class_1 = labels == 1
-    class_1 = tf.cast(class_1, tf.int32)
-
-    class_0 = labels == 0
-    class_0 = tf.cast(class_0, tf.int32)
-
-    counts['class_0'] += tf.reduce_sum(class_0)
-    counts['class_1'] += tf.reduce_sum(class_1)
-
-    return counts
-
-
-def class_fractions(dset):
-    counts = dset.reduce(
-        initial_state={'class_0': 0, 'class_1': 0}, reduce_func=count)
-    counts = np.array([counts['class_0'].numpy(),
-                       counts['class_1'].numpy()]).astype(np.float32)
-    fractions = counts/counts.sum()
-
-    return fractions, counts
-
-
-def balance_dataset(dset):
-
-    fractions, counts = class_fractions(dset)
-    min_count = min(counts)
-    print('Fractions: {}, counts: {}, take {}.'.format(fractions, counts, min_count))
-
-    negative_ds = dset.filter(
-        lambda features, label: label == 0).take(min_count)
-    positive_ds = dset.filter(
-        lambda features, label: label == 1).take(min_count)
-
-    balanced_ds = tf.data.experimental.sample_from_datasets(
-        [negative_ds, positive_ds], [0.5, 0.5]
-    )
-    return balanced_ds
 
 
 def augment_dataset(dset):

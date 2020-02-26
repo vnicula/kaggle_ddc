@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import argparse
 import constants
-import cv2
 import feature_extractor_models as featx
 import math
 import matplotlib.pyplot as plt
@@ -18,7 +17,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
-from efficientnet.tfkeras import EfficientNetB0
+# from efficientnet.tfkeras import EfficientNetB0
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -30,6 +29,7 @@ from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPoo
 # from tensorflow.keras.utils import multi_gpu_model
 
 from keras_utils import ScaledDotProductAttention, SeqSelfAttention, SeqWeightedAttention, binary_focal_loss, save_loss
+from keras_utils import balance_dataset
 # from multi_head import Encoder, CustomSchedule
 
 # Needed because keras model.fit shape checks are weak
@@ -51,39 +51,18 @@ if gpus:
 
 D_MODEL = 784
 
-def save_sample_img(name, label, values):
-    IMG_SIZE = values[0].shape[0]    
-
-    font_face = cv2.FONT_HERSHEY_SIMPLEX
-    thickness = 4
-    font_scale = 2
-
-    # line_shape = (IMG_SIZE, max_elems*IMG_SIZE, 3)
-    tile_shape = (IMG_SIZE, constants.SEQ_LEN*IMG_SIZE, 3)
-    tile_img = np.zeros(tile_shape, dtype=np.float32)
-    for j in range(len(values)):
-        color = (0, 255, 0) if label == 0 else (255, 0, 0)
-        cv2.putText(tile_img, name, (10, 50),
-                        font_face, font_scale,
-                        color, thickness, 2)
-        
-        tile_img[:, j*IMG_SIZE:(j+1)*IMG_SIZE, :] = values[j]
-
-    plt.imsave(name+'.jpg', tile_img)
-
-    return tile_img
-
 
 def tfrecords_dataset(input_dir, is_training):
     print('Using tfrecords dataset from: ', input_dir)
     
-    file_list = tf.data.Dataset.list_files(input_dir).shuffle(512)
+    file_list = tf.data.Dataset.list_files(input_dir)
+    if is_training:
+        file_list = file_list.shuffle(512)
+
     dataset = tf.data.TFRecordDataset(filenames=file_list, 
         buffer_size=None, 
         num_parallel_reads=tf.data.experimental.AUTOTUNE
     )
-    if is_training:
-        dataset = dataset.shuffle(buffer_size=1000)
 
     feature_description = {
         'label': tf.io.FixedLenFeature([], tf.int64, default_value=0),
@@ -103,6 +82,8 @@ def tfrecords_dataset(input_dir, is_training):
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     if is_training:
         dataset = dataset.shuffle(buffer_size=1000)
+    dataset = balance_dataset(dataset)
+
     return dataset
 
 
@@ -194,7 +175,7 @@ def create_model(input_shape):
     # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     weights = 'one_model_weights.h5'
 
-    classifier = featx.MesoInception5(input_shape[-3:], width=1)
+    classifier = featx.MesoInception4(input_shape[-3:])
     # print(classifier.model.summary())
     # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
     classifier.model.load_weights(weights)
@@ -287,8 +268,8 @@ def create_model(input_shape):
     # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    # net = Dropout(0.25)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01),
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
     # out = Dense(1, activation='sigmoid')(net)
