@@ -82,8 +82,7 @@ def tfrecords_dataset(input_dir, is_training):
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     dataset = balance_dataset(dataset)
     if is_training:
-        dataset = dataset.shuffle(buffer_size=1000)
-
+        dataset = dataset.shuffle(buffer_size=500)
 
     return dataset
 
