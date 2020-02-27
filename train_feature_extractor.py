@@ -180,14 +180,16 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model, mode, lr):
 
-    if mode == 'train' or mode == 'eval':
-        optimizer = tfa.optimizers.RectifiedAdam(lr)
+    if mode == 'train':
+        optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
         # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
         # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+    elif mode == 'eval':
+        optimizer = tf.keras.optimizers.SGD(lr)
 
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
@@ -270,9 +272,9 @@ def create_xception_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last Xception layers!')
-        for layer in base_model.layers[:116]:
+        for layer in base_model.layers[:126]:
             layer.trainable = False
-        for layer in base_model.layers[116:]:
+        for layer in base_model.layers[126:]:
             layer.trainable = True
     elif mode == 'tune':
         base_model = Xception(weights=None,
@@ -282,6 +284,9 @@ def create_xception_model(input_shape, mode):
             layer.trainable = False
         for layer in base_model.layers[126:]:
             layer.trainable = True
+    elif mode == 'eval':
+        base_model = Xception(weights=None,
+                            input_tensor=input_tensor, include_top=False, pooling='avg')
 
     net = base_model.output
     # net = Dropout(0.5)(net)

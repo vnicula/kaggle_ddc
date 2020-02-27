@@ -273,10 +273,11 @@ def save_predictions(predictions):
 
 
 if __name__ == '__main__':
-
+    import sys
     t0 = time.time()
-
-    file_paths = glob.glob(os.path.join(input_dir, '/raid/scratch/tf_train/dset/test_videos/*.mp4'))
+    test_path = os.path.join(sys.argv[1], 'test_videos/*.mp4')
+    print(test_path)
+    file_paths = glob.glob(test_path)
     test_files = [os.path.basename(x) for x in file_paths]
 
 #     try:
