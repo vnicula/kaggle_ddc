@@ -84,9 +84,9 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
-    # x = random_jitter(x)
+    x = random_jitter(x)
     x = tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=60, max_jpeg_quality=100)
+        x, min_jpeg_quality=40, max_jpeg_quality=100)
 
     return (x, y)
 
@@ -128,7 +128,7 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=3000
     if is_training:
         ds = ds.shuffle(buffer_size=shuffle_buffer_size)
 
-    ds = balance_dataset(ds)
+    ds = balance_dataset(ds, is_training)
 
     if is_training:
         ds = augment_dataset(ds)
@@ -258,13 +258,12 @@ def create_onemil_model(input_shape, mode):
 def create_xception_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
-    # create the base pre-trained model
-    xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
-    print('Loading xception weights from: ', xception_weights)
-    base_model = Xception(weights=xception_weights,
-                          input_tensor=input_tensor, include_top=False, pooling='avg')
 
     if mode == 'train':
+        xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
+        print('Loading xception weights from: ', xception_weights)
+        base_model = Xception(weights=xception_weights,
+                            input_tensor=input_tensor, include_top=False, pooling='avg')
         # print('\nFreezing all Xception layers!')
         # for layer in base_model.layers:
         #     layer.trainable = False
@@ -274,11 +273,13 @@ def create_xception_model(input_shape, mode):
         for layer in base_model.layers[129:]:
             layer.trainable = True
     elif mode == 'tune':
-        print('\nUnfreezing last k something Xception layers!')
-        for layer in base_model.layers[:126]:
-            layer.trainable = False
-        for layer in base_model.layers[126:]:
-            layer.trainable = True
+        base_model = Xception(weights=None,
+                            input_tensor=input_tensor, include_top=False, pooling='avg')
+        # print('\nUnfreezing last k something Xception layers!')
+        # for layer in base_model.layers[:126]:
+        #     layer.trainable = False
+        # for layer in base_model.layers[126:]:
+        #     layer.trainable = True
 
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)

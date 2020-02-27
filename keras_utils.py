@@ -888,16 +888,40 @@ def class_fractions(dset):
     return fractions, counts
 
 
-def balance_dataset(dset):
+def balance_dataset(dset, is_training):
 
     fractions, counts = class_fractions(dset)
     min_count = min(counts)
-    print('Fractions: {}, counts: {}, take {}.'.format(fractions, counts, min_count))
+    max_count = max(counts)
 
-    negative_ds = dset.filter(
-        lambda features, label: label == 0).take(min_count)
-    positive_ds = dset.filter(
-        lambda features, label: label == 1).take(min_count)
+    if not is_training:
+        print('Fractions: {}, counts: {}, take {}.'.format(fractions, counts, min_count))
+        negative_ds = dset.filter(
+            lambda features, label: label == 0).take(min_count)
+        positive_ds = dset.filter(
+            lambda features, label: label == 1).take(min_count)
+
+    else:
+        if counts[0] < counts[1]:
+            repeat_times = counts[1] // counts[0]
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'neg', repeat_times, max_count))
+            negative_ds = dset.filter(
+                lambda features, label: label == 0).repeat(repeat_times).take(max_count)
+            positive_ds = dset.filter(
+                lambda features, label: label == 1).take(max_count)
+        elif counts[0] > counts[1]:
+            repeat_times = counts[0] // counts[1]
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'pos', repeat_times, max_count))
+            negative_ds = dset.filter(
+                lambda features, label: label == 0).take(max_count)
+            positive_ds = dset.filter(
+                lambda features, label: label == 1).repeat(repeat_times).take(max_count)
+        else:
+            print('Fractions: {}, counts: {}, and take {}.'.format(fractions, counts, max_count))
+            negative_ds = dset.filter(
+                lambda features, label: label == 0).take(max_count)
+            positive_ds = dset.filter(
+                lambda features, label: label == 1).take(max_count)
 
     balanced_ds = tf.data.experimental.sample_from_datasets(
         [negative_ds, positive_ds], [0.5, 0.5]
