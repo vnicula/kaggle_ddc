@@ -904,20 +904,20 @@ def balance_dataset(dset, is_training):
     else:
         if counts[0] < counts[1]:
             repeat_times = counts[1] // counts[0]
-            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'neg', repeat_times, max_count))
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'neg', 1 + repeat_times, max_count))
             negative_ds = dset.filter(
-                lambda features, label: label == 0).repeat(repeat_times).take(max_count)
+                lambda features, label: label == 0).repeat(1 + repeat_times).take(max_count)
             positive_ds = dset.filter(
                 lambda features, label: label == 1).take(max_count)
         elif counts[0] > counts[1]:
             repeat_times = counts[0] // counts[1]
-            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'pos', repeat_times, max_count))
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'pos', 1 + repeat_times, max_count))
             negative_ds = dset.filter(
                 lambda features, label: label == 0).take(max_count)
             positive_ds = dset.filter(
-                lambda features, label: label == 1).repeat(repeat_times).take(max_count)
+                lambda features, label: label == 1).repeat(1 + repeat_times).take(max_count)
         else:
-            print('Fractions: {}, counts: {}, and take {}.'.format(fractions, counts, max_count))
+            print('Fractions: {}, counts: {}, and equally take {}.'.format(fractions, counts, max_count))
             negative_ds = dset.filter(
                 lambda features, label: label == 0).take(max_count)
             positive_ds = dset.filter(

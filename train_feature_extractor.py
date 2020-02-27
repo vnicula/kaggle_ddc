@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import tensorflow as tf
+import tensorflow_addons as tfa
 import time
 
 # from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
@@ -180,7 +181,8 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train' or mode == 'eval':
-        optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
+        optimizer = tfa.optimizers.RectifiedAdam(lr)
+        # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
         # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
@@ -214,7 +216,7 @@ def compile_model(model, mode, lr):
     )
     # my_loss = binary_focal_loss(alpha=0.5)
     # my_loss = 'mean_squared_error'
-    print('Using loss: %s' % my_loss)
+    print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
     return model
@@ -258,9 +260,9 @@ def create_onemil_model(input_shape, mode):
 def create_xception_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
+    xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
     if mode == 'train':
-        xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
         print('Loading xception weights from: ', xception_weights)
         base_model = Xception(weights=xception_weights,
                             input_tensor=input_tensor, include_top=False, pooling='avg')
@@ -268,22 +270,23 @@ def create_xception_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last Xception layers!')
-        for layer in base_model.layers[:129]:
+        for layer in base_model.layers[:116]:
             layer.trainable = False
-        for layer in base_model.layers[129:]:
+        for layer in base_model.layers[116:]:
             layer.trainable = True
     elif mode == 'tune':
         base_model = Xception(weights=None,
                             input_tensor=input_tensor, include_top=False, pooling='avg')
-        # print('\nUnfreezing last k something Xception layers!')
-        # for layer in base_model.layers[:126]:
-        #     layer.trainable = False
-        # for layer in base_model.layers[126:]:
-        #     layer.trainable = True
+        print('\nUnfreezing last k something Xception layers!')
+        for layer in base_model.layers[:126]:
+            layer.trainable = False
+        for layer in base_model.layers[126:]:
+            layer.trainable = True
 
     net = base_model.output
-    # net = Dense(1024, activation='relu')(net)
-    net = Dropout(0.5)(net)
+    # net = Dropout(0.5)(net)
+    # net = Dense(256, activation='relu')(net)
+    net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
