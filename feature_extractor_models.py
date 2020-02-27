@@ -85,7 +85,7 @@ class MesoInception5():
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)        
 
-        x5 = Conv2D(32*width, (5, 5), padding='same', activation = 'relu')(x4)
+        x5 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x4)
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(4, 4), padding='same')(x5)
         
@@ -105,7 +105,7 @@ class MesoInception5():
         y = Dense(32*self.width)(y)
         y = LeakyReLU(alpha=0.1)(y)
         y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(y)
 
         return Model(inputs = x, outputs = y)
 

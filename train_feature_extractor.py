@@ -181,9 +181,9 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -231,8 +231,8 @@ def create_meso_model(input_shape, mode):
     # classifier = featx.MesoInception4(input_shape)
 
     if mode == 'train':
-        meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
-        classifier.model.load_weights(meso4_weights)
+        # meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
+        # classifier.model.load_weights(meso4_weights)
         print('\nUnfreezing all conv Meso layers!')
         # for layer in classifier.model.layers:
         #     if 'dense' not in layer.name:
@@ -491,9 +491,9 @@ if __name__ == '__main__':
             tf.keras.callbacks.EarlyStopping(
                 # Stop training when `val_loss` is no longer improving
                 # monitor='val_loss', # watch out for reg losses
-                monitor='val_binary_crossentropy',
+                monitor='val_auc',
                 min_delta=1e-4,
-                patience=20,
+                patience=10,
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
                 'training_featx_%s_log.csv' % model_name),
