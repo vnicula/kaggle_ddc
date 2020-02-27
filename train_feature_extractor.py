@@ -9,7 +9,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import time
 
-# from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -181,9 +181,9 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5)
+        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -226,9 +226,9 @@ def compile_model(model, mode, lr):
 
 def create_meso_model(input_shape, mode):
 
-    # classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
 
-    classifier = featx.MesoInception4(input_shape)
+    # classifier = featx.MesoInception4(input_shape)
 
     if mode == 'train':
         meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
@@ -350,7 +350,9 @@ def create_efficientnet_model(input_shape, mode):
 
     input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
-    efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    efficientnet_weights = None
+    if mode == 'train':
+        efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', efficientnet_weights)
     base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor,
                                 include_top=False, pooling='avg')
