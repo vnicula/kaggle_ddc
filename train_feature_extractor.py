@@ -353,7 +353,7 @@ def create_efficientnet_model(input_shape, mode):
     efficientnet_weights = None
     if mode == 'train':
         efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-    print('Loading efficientnet weights from: ', efficientnet_weights)
+    print('Loaded efficientnet weights from: ', efficientnet_weights)
     base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor,
                                 include_top=False, pooling='avg')
 
@@ -362,9 +362,9 @@ def create_efficientnet_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last efficient net layers!')
-        for layer in base_model.layers[:214]:
+        for layer in base_model.layers[:227]:
             layer.trainable = False
-        for layer in base_model.layers[214:]:
+        for layer in base_model.layers[227:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
@@ -494,6 +494,7 @@ if __name__ == '__main__':
                 monitor='val_auc',
                 min_delta=1e-4,
                 patience=10,
+                mode='max',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
                 'training_featx_%s_log.csv' % model_name),
