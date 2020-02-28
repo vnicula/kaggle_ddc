@@ -57,10 +57,10 @@ def tfrecords_dataset(input_dir, is_training):
     
     file_list = tf.data.Dataset.list_files(input_dir)
     if is_training:
-        file_list = file_list.shuffle(512)
+        file_list = file_list.shuffle(buffer_size=512)
 
     dataset = tf.data.TFRecordDataset(filenames=file_list, 
-        buffer_size=None, 
+        buffer_size=512, 
         num_parallel_reads=tf.data.experimental.AUTOTUNE
     )
 
@@ -80,9 +80,11 @@ def tfrecords_dataset(input_dir, is_training):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    dataset = balance_dataset(dataset, is_training)
     if is_training:
-        dataset = dataset.shuffle(buffer_size=500)
+        dataset = dataset.shuffle(buffer_size=512)
+    else:
+        dataset = balance_dataset(dataset, is_training)
+        dataset = dataset.cache()
 
     return dataset
 
@@ -313,7 +315,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--model_name', type=str)
     parser.add_argument('--weights', type=str, default=None)
-    parser.add_argument('--save', type=str, default='true')
+    parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--batch_size', type=int, default=64)
     args = parser.parse_args()
@@ -372,9 +374,9 @@ if __name__ == '__main__':
                 factor=0.96, patience=2, min_lr=5e-6, verbose=1, mode='min')
         ]
         
-        # class_weight={0: 0.7, 1: 0.3}
+        class_weight={0: 0.82, 1: 0.18}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
+        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, 'final_%s_model' % args.model_name)
@@ -444,7 +446,7 @@ if __name__ == '__main__':
         else:
             print('No predictions, check input.')
     
-    if args.save == 'true':
+    if args.save == 'True':
         model_file_name = args.mode + '_final_full_%s_model.h5' % args.model_name
         if args.weights is not None:
             prefix, _ = os.path.splitext(os.path.basename(args.weights))
