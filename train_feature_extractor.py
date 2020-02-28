@@ -23,6 +23,7 @@ from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAtten
 tfkl = tf.keras.layers
 
 tf.random.set_seed(1234)
+IMAGES_LOG_DIR = "logs/images"
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -65,14 +66,33 @@ def decode_img(img):
 
 
 def random_jitter(image):
-    image = tf.image.resize(image, [280, 280],
-                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+
+    image = tf.image.resize(image, [280, 280]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     image = tf.image.random_crop(
         image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
     return image
 
 
+def random_rotate(image):
+    # if image.shape.__len__() == 4:
+    #     random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 4, maxval = np.pi / 4)
+    # if image.shape.__len__() == 3:
+    #     random_angles = tf.random.uniform(shape = (), minval = -np.pi / 4, maxval = np.pi / 4)
+
+    # # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
+    # return tfa.image.rotate(image, random_angles)
+
+    # NOTE this needs numpy
+    image_array = tf.keras.preprocessing.image.random_rotation(
+        image.numpy(), 45, row_axis=0, col_axis=1, channel_axis=2, fill_mode='nearest', cval=0.0,
+        interpolation_order=1
+    )
+    image = tf.convert_to_tensor(image_array)
+    return image
+
+
+@tf.function
 def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
     Args:
@@ -80,18 +100,28 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     Returns:
         Augmented image
     """
+    # TODO investigate these two
     # x = tf.image.random_hue(x, 0.08)
     # x = tf.image.random_saturation(x, 0.6, 1.6)
+    
     x = tf.image.random_brightness(x, 0.1)
     x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
-    x = random_jitter(x)
-    x = tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=40, max_jpeg_quality=100)
+
+    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jitter_choice < 0.5, lambda: x, lambda: random_jitter(x))
+
+    # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x = tf.cond(rotate_choice < 0.5, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.shape(x)))
+
+    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jpeg_choice < 0.5, lambda: x, lambda: tf.image.random_jpeg_quality(
+        x, min_jpeg_quality=50, max_jpeg_quality=100))
 
     return (x, y)
 
 
+@tf.function
 def process_path(file_path):
     label = get_label(file_path)
     # load the raw data from the file as a string
@@ -108,16 +138,36 @@ def class_func(feat, label):
     return label
 
 
-def augment_dataset(dset):
+class TbAugmentation:
+    def __init__(self, logdir: str, max_images: int, name: str):
+        self.file_writer = tf.summary.create_file_writer(logdir)
+        self.max_images: int = max_images
+        self.name: str = name
+        self._counter: int = 0
 
-    dset = dset.map(
-        image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    return dset
+    def __call__(self, image, label):
+        augmented_image, _ = image_augment(image, label)
+        with self.file_writer.as_default():
+            tf.summary.image(
+                self.name,
+                [augmented_image],
+                step=self._counter,
+                max_outputs=self.max_images,
+            )
+
+        self._counter += 1
+        return augmented_image, label
 
 
 def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=30000):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
+
+    AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
+
+    if is_training:
+        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    ds = balance_dataset(ds, is_training)
 
     if cache:
         if isinstance(cache, str):
@@ -127,12 +177,7 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=3000
             ds = ds.cache()
 
     if is_training:
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
-
-    ds = balance_dataset(ds, is_training)
-
-    if is_training:
-        ds = augment_dataset(ds)
+        ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     else:
         # TODO: seems rejection_resample doesn't work with keras fit
         # resampler = tf.data.experimental.rejection_resample(
@@ -181,9 +226,9 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -214,7 +259,7 @@ def compile_model(model, mode, lr):
         METRICS.append(fraction_positives)
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
     my_loss = tf.keras.losses.BinaryCrossentropy(
-        # label_smoothing=0.025
+        label_smoothing=0.025
     )
     # my_loss = binary_focal_loss(alpha=0.5)
     # my_loss = 'mean_squared_error'
@@ -503,7 +548,7 @@ if __name__ == '__main__':
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
-            # tf.keras.callbacks.TensorBoard(log_dir='./train_featx__%s_logs' % model_name),
+            # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
         ]
 
         # class_weight = {0: 0.45, 1: 0.55}
