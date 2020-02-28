@@ -17,7 +17,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
-# from efficientnet.tfkeras import EfficientNetB0
+from efficientnet.tfkeras import EfficientNetB0
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -80,7 +80,7 @@ def tfrecords_dataset(input_dir, is_training):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    dataset = balance_dataset(dataset)
+    dataset = balance_dataset(dataset, is_training)
     if is_training:
         dataset = dataset.shuffle(buffer_size=500)
 
@@ -93,7 +93,8 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model, mode, lr):
 
-    optimizer = tf.keras.optimizers.Adam(lr=lr) #(lr=0.025)
+    # optimizer = tf.keras.optimizers.Adam(lr=lr) #(lr=0.025)
+    optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -124,7 +125,7 @@ def compile_model(model, mode, lr):
     if mode == 'train':
         METRICS.append(fraction_positives)
         my_loss = tf.keras.losses.BinaryCrossentropy(
-            # label_smoothing=0.025
+            label_smoothing=0.025
         )
         # my_loss = binary_focal_loss(alpha=0.7)
     else:
@@ -141,7 +142,7 @@ def weighted_ce_logits(y_true, y_pred):
     return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.3, name='weighted_ce_logits')
 
 
-def create_efficientnet_model(input_shape):
+def load_efficientnet_model(input_shape, weights):
 
     # create the base pre-trained model
     # efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
@@ -156,26 +157,14 @@ def create_efficientnet_model(input_shape):
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
+    model.load_weights(weights)
 
-    return model, base_model
+    return base_model
 
 
-# TODO: use Bidirectional and try narrower MobileNet
-# TODO: explore removal of projection at the end of MobileNet to LSTM
-# TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
-# oh wait its already in TF doc
-def create_model(input_shape):
+def load_meso_model(input_shape, weights):
 
-    input_layer = Input(shape=input_shape)
-    input_mask = Input(shape=(input_shape[0]))
-    # reshape = Reshape([224, 224, 3])(input_layer)
-
-    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
-    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
-    # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-    weights = 'one_model_weights.h5'
-
-    classifier = featx.MesoInception4(input_shape[-3:])
+    classifier = featx.MesoInception5(1, input_shape)
     # print(classifier.model.summary())
     # classifier.model.load_weights('pretrained/Meso/raw/all/weights.h5')
     classifier.model.load_weights(weights)
@@ -187,6 +176,24 @@ def create_model(input_shape):
             print('output set to {}.'.format(layer.name))
 
     feature_extractor = Model(inputs=classifier.model.input, outputs=output)
+
+    return feature_extractor
+
+
+# TODO: use Bidirectional and try narrower MobileNet
+# TODO: explore removal of projection at the end of MobileNet to LSTM
+# TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
+# oh wait its already in TF doc
+def create_model(input_shape, model_name):
+
+    input_layer = Input(shape=input_shape)
+    input_mask = Input(shape=(input_shape[0]))
+    # reshape = Reshape([224, 224, 3])(input_layer)
+
+    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
+    # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
+    # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    weights = 'one_model_weights.h5'
 
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
@@ -203,14 +210,14 @@ def create_model(input_shape):
     #     input_shape=None, 
     #     pooling='avg'
     # )
-
-    # effnet, feature_extractor = create_efficientnet_model(input_shape[-3:])
-    # print('Loading feature extractor weights from: ', weights)
-    # effnet.load_weights(weights)
-
-    # feature_extractor = EfficientNetB0(weights=weights, input_shape=input_shape[-3:], 
-    #     include_top=False, pooling='avg')
     
+    if model_name == 'meso':
+        feature_extractor = load_meso_model(input_shape[-3:], weights)
+    elif model_name == 'efficientnet':
+        feature_extractor = load_efficientnet_model(input_shape[-3:], weights)
+    else:
+        raise ValueError('Unknown feature extractor.')
+
     feature_extractor.trainable = False
     for i, layer in enumerate(feature_extractor.layers):
         layer.trainable = False
@@ -304,6 +311,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='train')
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--model_name', type=str)
     parser.add_argument('--weights', type=str, default=None)
     parser.add_argument('--save', type=str, default='true')
     parser.add_argument('--lr', type=float, default=0.01)
@@ -328,7 +336,7 @@ if __name__ == '__main__':
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
         with strategy.scope():
-            model = create_model(in_shape)
+            model = create_model(in_shape, args.model_name)
             if args.weights is not None:
                 print('Loading model and weights from: ', args.weights)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -344,7 +352,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='fattw_{epoch}.h5',
+                filepath='fattw_%s_{epoch}.h5' % args.model_name,
                 save_best_only=False,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
@@ -357,7 +365,7 @@ if __name__ == '__main__':
                 min_delta=1e-4,
                 patience=30,
                 verbose=1),
-            tf.keras.callbacks.CSVLogger('training_log.csv'),
+            tf.keras.callbacks.CSVLogger('training_%s_log.csv' % args.model_name),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
@@ -369,14 +377,14 @@ if __name__ == '__main__':
         history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
-        save_loss(history, 'final_model')
+        save_loss(history, 'final_%s_model' % args.model_name)
 
     elif args.mode == 'eval':
         strategy = tf.distribute.MirroredStrategy()
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
         with strategy.scope():
-            model = create_model(in_shape)
+            model = create_model(in_shape, args.model_name)
             if args.weights is not None:
                 print('Loading model and weights from: ', args.weights)
                 # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
@@ -437,7 +445,7 @@ if __name__ == '__main__':
             print('No predictions, check input.')
     
     if args.save == 'true':
-        model_file_name = args.mode + '_final_full_model.h5'
+        model_file_name = args.mode + '_final_full_%s_model.h5' % args.model_name
         if args.weights is not None:
             prefix, _ = os.path.splitext(os.path.basename(args.weights))
             model_file_name = prefix + '_' + model_file_name

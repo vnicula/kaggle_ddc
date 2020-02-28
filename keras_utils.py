@@ -6,6 +6,7 @@ import warnings
 
 K = tf.keras.backend
 
+
 class ScaledDotProductAttention(tf.keras.layers.Layer):
     r"""The attention layer that takes three inputs representing queries, keys and values.
     \text{Attention}(Q, K, V) = \text{softmax}(\frac{Q K^T}{\sqrt{d_k}}) V
@@ -60,7 +61,8 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
         if isinstance(mask, list):
             mask = mask[1]
         feature_dim = K.shape(query)[-1]
-        e = K.batch_dot(query, key, axes=2) / K.sqrt(K.cast(feature_dim, dtype=K.floatx()))
+        e = K.batch_dot(query, key, axes=2) / \
+            K.sqrt(K.cast(feature_dim, dtype=K.floatx()))
         e = K.exp(e - K.max(e, axis=-1, keepdims=True))
         if self.history_only:
             query_len, key_len = K.shape(query)[1], K.shape(key)[1]
@@ -138,7 +140,8 @@ class SeqSelfAttention(tf.keras.layers.Layer):
         self.bias_regularizer = tf.keras.regularizers.get(bias_regularizer)
         self.kernel_constraint = tf.keras.constraints.get(kernel_constraint)
         self.bias_constraint = tf.keras.constraints.get(bias_constraint)
-        self.attention_activation = tf.keras.activations.get(attention_activation)
+        self.attention_activation = tf.keras.activations.get(
+            attention_activation)
         self.attention_regularizer_weight = attention_regularizer_weight
         self._backend = tf.keras.backend.backend()
 
@@ -148,7 +151,8 @@ class SeqSelfAttention(tf.keras.layers.Layer):
         elif attention_type == SeqSelfAttention.ATTENTION_TYPE_MUL:
             self.Wa, self.ba = None, None
         else:
-            raise NotImplementedError('No implementation for attention type : ' + attention_type)
+            raise NotImplementedError(
+                'No implementation for attention type : ' + attention_type)
 
     def get_config(self):
         config = {
@@ -244,11 +248,13 @@ class SeqSelfAttention(tf.keras.layers.Layer):
             lower = K.expand_dims(lower, axis=-1)
             upper = lower + self.attention_width
             indices = K.expand_dims(K.arange(0, input_len), axis=0)
-            e = e * K.cast(lower <= indices, K.floatx()) * K.cast(indices < upper, K.floatx())
+            e = e * K.cast(lower <= indices, K.floatx()) * \
+                K.cast(indices < upper, K.floatx())
         if mask is not None:
             mask = K.cast(mask, K.floatx())
             mask = K.expand_dims(mask)
-            e = K.permute_dimensions(K.permute_dimensions(e * mask, (0, 2, 1)) * mask, (0, 2, 1))
+            e = K.permute_dimensions(K.permute_dimensions(
+                e * mask, (0, 2, 1)) * mask, (0, 2, 1))
 
         # a_{t} = \text{softmax}(e_t)
         s = K.sum(e, axis=-1, keepdims=True)
@@ -277,14 +283,17 @@ class SeqSelfAttention(tf.keras.layers.Layer):
 
         # e_{t, t'} = W_a h_{t, t'} + b_a
         if self.use_attention_bias:
-            e = K.reshape(K.dot(h, self.Wa) + self.ba, (batch_size, input_len, input_len))
+            e = K.reshape(K.dot(h, self.Wa) + self.ba,
+                          (batch_size, input_len, input_len))
         else:
-            e = K.reshape(K.dot(h, self.Wa), (batch_size, input_len, input_len))
+            e = K.reshape(K.dot(h, self.Wa),
+                          (batch_size, input_len, input_len))
         return e
 
     def _call_multiplicative_emission(self, inputs):
         # e_{t, t'} = x_t^T W_a x_{t'} + b_a
-        e = K.batch_dot(K.dot(inputs, self.Wa), K.permute_dimensions(inputs, (0, 2, 1)))
+        e = K.batch_dot(K.dot(inputs, self.Wa),
+                        K.permute_dimensions(inputs, (0, 2, 1)))
         if self.use_attention_bias:
             e += self.ba[0]
         return e
@@ -405,7 +414,7 @@ def binary_focal_loss(gamma=2., alpha=.25):
         pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
 
         return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) \
-               -K.sum((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+               - K.sum((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
 
     return binary_focal_loss_fixed
 
@@ -531,7 +540,8 @@ class LRFinder(tf.keras.callbacks.Callback):
             if validation_sample_rate > 0 or validation_sample_rate < 0:
                 self.validation_sample_rate = validation_sample_rate
             else:
-                raise ValueError("`validation_sample_rate` must be a positive or negative integer other than o")
+                raise ValueError(
+                    "`validation_sample_rate` must be a positive or negative integer other than o")
         else:
             self.use_validation_set = False
             self.validation_sample_rate = 0
@@ -603,7 +613,8 @@ class LRFinder(tf.keras.callbacks.Callback):
             x = X[idx]
             y = Y[idx]
 
-            values = self.model.evaluate(x, y, batch_size=self.batch_size, verbose=False)
+            values = self.model.evaluate(
+                x, y, batch_size=self.batch_size, verbose=False)
             loss = values[0]
         else:
             loss = logs['loss']
@@ -812,6 +823,7 @@ class LRFinder(tf.keras.callbacks.Callback):
     def losses(self):
         return np.array(self.history['running_loss_'])
 
+
 def save_loss(H, run_name):
     plt.figure()
     N = len(H.history["loss"])
@@ -858,7 +870,7 @@ def save_loss(H, run_name):
 #             # (1 - z) * -log(1 - sigmoid(x)). Epsilon is added to prevent passing a zero into the log
 #             x_2 = (1 - y_true) * -tf.math.log(1 - y_pred + 1e-6)
 
-#             return tf.add(x_1, x_2) * self.weight 
+#             return tf.add(x_1, x_2) * self.weight
 
 #         # Use built in function
 #         return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
@@ -895,7 +907,8 @@ def balance_dataset(dset, is_training):
     max_count = max(counts)
 
     if not is_training:
-        print('Fractions: {}, counts: {}, take {}.'.format(fractions, counts, min_count))
+        print('Fractions: {}, counts: {}, take {}.'.format(
+            fractions, counts, min_count))
         negative_ds = dset.filter(
             lambda features, label: label == 0).take(min_count)
         positive_ds = dset.filter(
@@ -904,20 +917,23 @@ def balance_dataset(dset, is_training):
     else:
         if counts[0] < counts[1]:
             repeat_times = counts[1] // counts[0]
-            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'neg', 1 + repeat_times, max_count))
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(
+                fractions, counts, 'neg', 1 + repeat_times, max_count))
             negative_ds = dset.filter(
                 lambda features, label: label == 0).repeat(1 + repeat_times).take(max_count)
             positive_ds = dset.filter(
                 lambda features, label: label == 1).take(max_count)
         elif counts[0] > counts[1]:
             repeat_times = counts[0] // counts[1]
-            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(fractions, counts, 'pos', 1 + repeat_times, max_count))
+            print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(
+                fractions, counts, 'pos', 1 + repeat_times, max_count))
             negative_ds = dset.filter(
                 lambda features, label: label == 0).take(max_count)
             positive_ds = dset.filter(
                 lambda features, label: label == 1).repeat(1 + repeat_times).take(max_count)
         else:
-            print('Fractions: {}, counts: {}, and equally take {}.'.format(fractions, counts, max_count))
+            print('Fractions: {}, counts: {}, and equally take {}.'.format(
+                fractions, counts, max_count))
             negative_ds = dset.filter(
                 lambda features, label: label == 0).take(max_count)
             positive_ds = dset.filter(
@@ -927,3 +943,36 @@ def balance_dataset(dset, is_training):
         [negative_ds, positive_ds], [0.5, 0.5]
     )
     return balanced_ds
+
+
+def sce_loss(y_true, y_pred):
+    y_true_1 = y_true
+    y_pred_1 = y_pred
+
+    y_true_2 = y_true
+    y_pred_2 = y_pred
+
+    y_pred_1 = tf.clip_by_value(y_pred_1, 1e-7, 1.0)
+    y_true_2 = tf.clip_by_value(y_true_2, 1e-4, 1.0)
+
+    return tf.reduce_mean(-tf.reduce_sum(y_true_1 * tf.math.log(y_pred_1), axis=-1)) \
+        + tf.reduce_mean(-tf.reduce_sum(y_pred_2 * tf.math.log(y_true_2), axis=-1))
+
+
+def lsr_loss(y_true, y_pred):
+    epsilon = 0.1
+    y_smoothed_true = y_true * (1 - epsilon - epsilon / 10.0)
+    y_smoothed_true = y_smoothed_true + epsilon / 10.0
+
+    y_pred_1 = tf.clip_by_value(y_pred, 1e-7, 1.0)
+
+    return tf.reduce_mean(-tf.reduce_sum(y_smoothed_true * tf.math.log(y_pred_1), axis=-1))
+
+
+def gce_loss(y_true, y_pred):
+    """
+    2018 - nips - Generalized Cross Entropy Loss for Training Deep Neural Networks with Noisy Labels.
+    """
+    q = 0.7
+    t_loss = (1 - tf.pow(tf.reduce_sum(y_true * y_pred, axis=-1), q)) / q
+    return tf.reduce_mean(t_loss)

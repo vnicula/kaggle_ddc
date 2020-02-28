@@ -67,7 +67,7 @@ def decode_img(img):
 
 def random_jitter(image):
 
-    image = tf.image.resize(image, [280, 280]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     image = tf.image.random_crop(
         image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
@@ -85,7 +85,7 @@ def random_rotate(image):
 
     # NOTE this needs numpy
     image_array = tf.keras.preprocessing.image.random_rotation(
-        image.numpy(), 45, row_axis=0, col_axis=1, channel_axis=2, fill_mode='nearest', cval=0.0,
+        image.numpy(), 30, row_axis=0, col_axis=1, channel_axis=2, fill_mode='constant', cval=0.0,
         interpolation_order=1
     )
     image = tf.convert_to_tensor(image_array)
@@ -108,16 +108,16 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
 
-    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jitter_choice < 0.5, lambda: x, lambda: random_jitter(x))
-
     rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(rotate_choice < 0.5, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
     x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
     
-    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jpeg_choice < 0.5, lambda: x, lambda: tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=50, max_jpeg_quality=100))
+    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jitter_choice < 0.5, lambda: x, lambda: random_jitter(x))
+
+    # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
+    #     x, min_jpeg_quality=80, max_jpeg_quality=100))
 
     return (x, y)
 
@@ -160,14 +160,12 @@ class TbAugmentation:
         return augmented_image, label
 
 
-def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=30000):
+def prepare_dataset(ds, is_training, batch_size, cache):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
 
     AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
 
-    if is_training:
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     ds = balance_dataset(ds, is_training)
 
     if cache:
@@ -203,6 +201,9 @@ def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=3000
 
 def input_dataset(input_dir, is_training, batch_size, cache):
     list_ds = tf.data.Dataset.list_files(input_dir)
+    if is_training:
+        list_ds = list_ds.shuffle(buffer_size=50000)
+
     labeled_ds = list_ds.map(
         process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
