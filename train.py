@@ -52,6 +52,49 @@ if gpus:
 D_MODEL = 784
 
 
+def random_jitter(image):
+
+    image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    image = tf.image.random_crop(
+        image, size=[tf.shape(image)[0], constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+
+    return image
+
+
+# @tf.function
+def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
+    """augmentation
+    Args:
+        x: Image
+    Returns:
+        Augmented image
+    """
+
+    img = x['input_1']
+    # TODO investigate these two
+    # img = tf.image.random_hue(img, 0.08)
+    # img = tf.image.random_saturation(img, 0.6, 1.6)
+    
+    img = tf.image.random_brightness(img, 0.1)
+    img = tf.image.random_contrast(img, 0.8, 1.2)
+    img = tf.image.random_flip_left_right(img)
+
+    # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x = tf.cond(rotate_choice < 0.5, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
+    # x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    
+    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    img = tf.cond(jitter_choice < 0.5, lambda: img, lambda: random_jitter(img))
+
+    # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
+    #     x, min_jpeg_quality=80, max_jpeg_quality=100))
+
+    x['input_1'] = img
+
+    return (x, y)
+
+
 def tfrecords_dataset(input_dir, is_training):
     print('Using tfrecords dataset from: ', input_dir)
     
@@ -60,7 +103,7 @@ def tfrecords_dataset(input_dir, is_training):
         file_list = file_list.shuffle(buffer_size=512)
 
     dataset = tf.data.TFRecordDataset(filenames=file_list, 
-        buffer_size=512, 
+        buffer_size=None, 
         num_parallel_reads=tf.data.experimental.AUTOTUNE
     )
 
@@ -81,6 +124,7 @@ def tfrecords_dataset(input_dir, is_training):
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     if is_training:
+        dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(buffer_size=512)
     else:
         dataset = balance_dataset(dataset, is_training)
@@ -273,8 +317,8 @@ def create_model(input_shape, model_name):
     # net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
-    net = SeqWeightedAttention()(net, mask=input_mask)
-    # net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
+    # net = SeqWeightedAttention()(net, mask=input_mask)
+    net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     net = Dropout(0.5)(net)
