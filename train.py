@@ -323,7 +323,7 @@ if __name__ == '__main__':
     in_shape = (constants.SEQ_LEN,) + constants.FEAT_SHAPE
 
     custom_objs = {
-        # 'fraction_positives':fraction_positives,
+        'fraction_positives':fraction_positives,
         'SeqWeightedAttention':SeqWeightedAttention,
         # 'SeqSelfAttention':SeqSelfAttention,
         # 'weighted_ce_logits':weighted_ce_logits,
