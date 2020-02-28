@@ -17,13 +17,12 @@ from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
-
+from tensorflow.keras.preprocessing import image as tfk_image
 from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset
 
 tfkl = tf.keras.layers
 
 tf.random.set_seed(1234)
-IMAGES_LOG_DIR = "logs/images"
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -36,179 +35,6 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         print(e)
-
-
-def get_label(file_path):
-    # convert the path to a list of path components
-    parts = tf.strings.split(file_path, os.path.sep)
-    # The second to last is the class-directory
-    return tf.strings.to_number(
-        parts[-2],
-        out_type=tf.int32,
-        name=None
-    )
-
-
-def decode_img(img):
-    # convert the compressed string to a 3D uint8 tensor
-    img = tf.image.decode_png(img, channels=3)
-    # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-    img = tf.image.convert_image_dtype(img, tf.float32)
-    # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0,
-    #     target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
-
-    # Xception
-    # img = tf.cast(img, tf.float32)
-
-    # resize the image to the desired size.
-    # img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
-    return img
-
-
-def random_jitter(image):
-
-    image = tf.image.resize(image, [280, 280]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    image = tf.image.random_crop(
-        image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    return image
-
-
-def random_rotate(image):
-    # if image.shape.__len__() == 4:
-    #     random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 4, maxval = np.pi / 4)
-    # if image.shape.__len__() == 3:
-    #     random_angles = tf.random.uniform(shape = (), minval = -np.pi / 4, maxval = np.pi / 4)
-
-    # # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
-    # return tfa.image.rotate(image, random_angles)
-
-    # NOTE this needs numpy
-    image_array = tf.keras.preprocessing.image.random_rotation(
-        image.numpy(), 45, row_axis=0, col_axis=1, channel_axis=2, fill_mode='nearest', cval=0.0,
-        interpolation_order=1
-    )
-    image = tf.convert_to_tensor(image_array)
-    return image
-
-
-@tf.function
-def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
-    """augmentation
-    Args:
-        x: Image
-    Returns:
-        Augmented image
-    """
-    # TODO investigate these two
-    # x = tf.image.random_hue(x, 0.08)
-    # x = tf.image.random_saturation(x, 0.6, 1.6)
-    
-    x = tf.image.random_brightness(x, 0.1)
-    x = tf.image.random_contrast(x, 0.8, 1.2)
-    x = tf.image.random_flip_left_right(x)
-
-    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jitter_choice < 0.5, lambda: x, lambda: random_jitter(x))
-
-    rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(rotate_choice < 0.5, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
-    x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-    
-    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jpeg_choice < 0.5, lambda: x, lambda: tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=50, max_jpeg_quality=100))
-
-    return (x, y)
-
-
-@tf.function
-def process_path(file_path):
-    label = get_label(file_path)
-    # load the raw data from the file as a string
-    img = tf.io.read_file(file_path)
-    img = decode_img(img)
-    # TODO make sure you take this out for non xception backbones
-    # img = tf.keras.applications.xception.preprocess_input(img)
-    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-
-    return img, label
-
-
-def class_func(feat, label):
-    return label
-
-
-class TbAugmentation:
-    def __init__(self, logdir: str, max_images: int, name: str):
-        self.file_writer = tf.summary.create_file_writer(logdir)
-        self.max_images: int = max_images
-        self.name: str = name
-        self._counter: int = 0
-
-    def __call__(self, image, label):
-        augmented_image, _ = image_augment(image, label)
-        with self.file_writer.as_default():
-            tf.summary.image(
-                self.name,
-                [augmented_image],
-                step=self._counter,
-                max_outputs=self.max_images,
-            )
-
-        self._counter += 1
-        return augmented_image, label
-
-
-def prepare_dataset(ds, is_training, batch_size, cache, shuffle_buffer_size=30000):
-    # use `.cache(filename)` to cache preprocessing work for datasets that don't
-    # fit in memory.
-
-    AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
-
-    if is_training:
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
-    ds = balance_dataset(ds, is_training)
-
-    if cache:
-        if isinstance(cache, str):
-            ds = ds.cache(cache)
-        else:
-            print('Caching dataset is_training: %s' % is_training)
-            ds = ds.cache()
-
-    if is_training:
-        ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    else:
-        # TODO: seems rejection_resample doesn't work with keras fit
-        # resampler = tf.data.experimental.rejection_resample(
-        #     class_func, target_dist=[0.5, 0.5]) #, initial_dist=[0.345, 0.655])
-        # ds = ds.apply(resampler)
-        # ds = ds.map(lambda extra_label, features_and_label: features_and_label)
-
-        # ds = balance_dataset(ds)
-        pass
-
-    # Repeat forever
-    # ds = ds.repeat()
-
-    ds = ds.batch(batch_size)
-
-    # `prefetch` lets the dataset fetch batches in the background while the model
-    # is training.
-    ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-
-    return ds
-
-
-def input_dataset(input_dir, is_training, batch_size, cache):
-    list_ds = tf.data.Dataset.list_files(input_dir)
-    labeled_ds = list_ds.map(
-        process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-    prepared_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
-
-    return prepared_ds
 
 
 def show_batch(image_batch, label_batch):
@@ -467,6 +293,36 @@ def create_model(model_name, input_shape, mode):
     raise ValueError('Unknown model %s' % model_name)
 
 
+def train_val_data_gen(train_dir, eval_dir, image_size, batch_size):
+    train_datagen = tfk_image.ImageDataGenerator(
+        rescale=1./255,
+        # shear_range=0.2,
+        rotation_range=20,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+    )
+    eval_datagen = tfk_image.ImageDataGenerator(
+        rescale=1./255
+    )
+    train_generator = train_datagen.flow_from_directory(
+        train_dir,
+        target_size=image_size,
+        batch_size=batch_size,
+        class_mode='binary',
+    )
+    eval_generator = eval_datagen.flow_from_directory(
+        eval_dir,
+        target_size=image_size,
+        batch_size=batch_size,
+        class_mode='binary',
+        save_to_dir='eval_images'
+    )
+
+    return train_generator, eval_generator
+
+
 if __name__ == '__main__':
 
     t0 = time.time()
@@ -508,18 +364,9 @@ if __name__ == '__main__':
             print('\nTraining model from scratch.')
         compile_model(model, args.mode, args.lr)
 
-    eval_dataset = input_dataset(
-        args.eval_dir, is_training=False, batch_size=batch_size,
-        cache=False if args.mode == 'eval' else True
-    )
-    # fractions, counts = class_fractions(eval_dataset)
-    # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
+    train_generator, eval_generator = train_val_data_gen(args.train_dir, args.eval_dir, in_shape[:2], batch_size)
 
     if args.mode == 'train' or args.mode == 'tune':
-        train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
-                                      cache=False
-                                      # cache='/raid/scratch/training_cache.mem'
-                                      )
 
         # lr_callback = LRFinder(num_samples=33501, batch_size=batch_size,
         #                minimum_lr=1e-5, maximum_lr=5e-1,
@@ -528,7 +375,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
+                filepath='krs_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 # save_format='tf',
@@ -543,7 +390,7 @@ if __name__ == '__main__':
                 mode='max',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
-                'training_featx_%s_log.csv' % model_name),
+                'krs_training_featx_%s_log.csv' % model_name),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
@@ -553,18 +400,18 @@ if __name__ == '__main__':
         ]
 
         # class_weight = {0: 0.45, 1: 0.55}
-        history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
-                            validation_data=eval_dataset,  # validation_steps=validation_steps,
+        history = model.fit(train_generator, epochs=num_epochs,  # class_weight=class_weight,
+                            validation_data=eval_generator,  # validation_steps=validation_steps,
                             callbacks=callbacks)
 
         # lr_callback.plot_schedule()
-        save_loss(history, 'final_featx_%s_model' % model_name)
+        save_loss(history, 'krs_final_featx_%s_model' % model_name)
 
     elif args.mode == 'eval':
-        model.evaluate(eval_dataset)
+        model.evaluate(eval_generator)
 
     if args.save == 'True':
-        model_file_name = args.mode + '_featx_full_%s_model.h5' % model_name
+        model_file_name = args.mode + '_krs_featx_full_%s_model.h5' % model_name
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
         model.save(model_file_name)
