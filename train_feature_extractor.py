@@ -603,7 +603,8 @@ if __name__ == '__main__':
                     layers_name=['conv2d_21']
                 )
             ]
-        callbacks.extend(explain_callbacks)
+            callbacks.extend(explain_callbacks)
+
         # class_weight = {0: 0.45, 1: 0.55}
         history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
