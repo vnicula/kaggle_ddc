@@ -241,7 +241,7 @@ def show_batch(image_batch, label_batch):
 
 
 def fraction_positives(y_true, y_pred):
-    return tf.keras.backend.mean(y_true)
+    return tf.keras.backend.mean(y_true[:, 1])
 
 
 def compile_model(model, mode, lr):
@@ -263,18 +263,20 @@ def compile_model(model, mode, lr):
 
     thresh = 0.5
     METRICS = [
-        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
-        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
-        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
-        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
-        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
-        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
-        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
+        # tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
+        # tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
+        # tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
+        # tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
+        # tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
+        # tf.keras.metrics.Precision(name='precision', thresholds=thresh),
+        # tf.keras.metrics.Recall(name='recall', thresholds=thresh),
         tf.keras.metrics.AUC(name='auc'),
         # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
-        tf.keras.metrics.BinaryCrossentropy(),
+        # tf.keras.metrics.BinaryCrossentropy(),
         # lr_metric,
-        # Write TensorBoard logs to `./logs` directory
+
+        tf.keras.metrics.CategoricalAccuracy(name='acc'),
+        tf.keras.losses.categorical_crossentropy(),
     ]
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
@@ -568,18 +570,18 @@ if __name__ == '__main__':
             tf.keras.callbacks.ModelCheckpoint(
                 filepath='featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
                 save_best_only=True,
-                monitor='val_auc',
-                mode='max',
+                monitor='val_loss',
+                mode='min',
                 # save_format='tf',
                 save_weights_only=True,
                 verbose=1),
             tf.keras.callbacks.EarlyStopping(
                 # Stop training when `val_loss` is no longer improving
                 # monitor='val_loss', # watch out for reg losses
-                monitor='val_auc',
+                monitor='val_loss',
                 min_delta=1e-4,
-                patience=20,
-                mode='max',
+                patience=25,
+                mode='min',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
                 'training_featx_%s_log.csv' % model_name),
