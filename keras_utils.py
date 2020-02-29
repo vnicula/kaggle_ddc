@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import sys
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import warnings
@@ -944,8 +945,21 @@ def balance_dataset(dset, is_training):
     )
     return balanced_ds
 
+def sparse_to_binary(y_true, y_pred):
+    y_pred_pos = y_pred
+    y_pred_neg = 1 - y_pred
+
+    y_pred = tf.concat([y_pred_neg, y_pred_pos], axis=-1)
+    y_true = tf.one_hot(tf.cast(y_true, dtype=tf.uint8), depth=2)
+    
+    # tf.print("True, Preds:", y_true, y_pred, output_stream=sys.stdout)
+    
+    return y_true, y_pred
 
 def sce_loss(y_true, y_pred):
+
+    # y_true, y_pred = sparse_to_binary(y_true, y_pred)
+
     y_true_1 = y_true
     y_pred_1 = y_pred
 
@@ -973,6 +987,7 @@ def gce_loss(y_true, y_pred):
     """
     2018 - nips - Generalized Cross Entropy Loss for Training Deep Neural Networks with Noisy Labels.
     """
+    # y_true, y_pred = sparse_to_binary(y_true, y_pred)
     q = 0.7
     t_loss = (1 - tf.pow(tf.reduce_sum(y_true * y_pred, axis=-1), q)) / q
     return tf.reduce_mean(t_loss)

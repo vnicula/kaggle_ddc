@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import tensorflow as tf
+import tf_explain
 import tensorflow_addons as tfa
 import time
 
@@ -18,7 +19,7 @@ from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatena
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
-from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset
+from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset, sce_loss, gce_loss
 
 tfkl = tf.keras.layers
 
@@ -190,6 +191,11 @@ def prepare_dataset(ds, is_training, batch_size, cache):
     # Repeat forever
     # ds = ds.repeat()
 
+    # Switch labels to one hot
+    def switch_to_onehot(features, label):
+        return features, tf.one_hot(label, depth=2)
+    ds = ds.map(switch_to_onehot, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
     ds = ds.batch(batch_size)
 
     # `prefetch` lets the dataset fetch batches in the background while the model
@@ -210,6 +216,19 @@ def input_dataset(input_dir, is_training, batch_size, cache):
     prepared_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
 
     return prepared_ds
+
+
+def tf_explain_dataset(input_dir):
+    list_ds = tf.data.Dataset.list_files(input_dir)
+    labeled_ds = list_ds.map(process_path, num_parallel_calls=4)
+    positive_ds = labeled_ds.filter(lambda features, label: label == 1).take(8)
+    features = []
+    labels = []
+    for feature, label in list(positive_ds.as_numpy_iterator()):
+        features.append(feature)
+        labels.append(label)
+
+    return (np.array(features), np.array(labels))
 
 
 def show_batch(image_batch, label_batch):
@@ -235,7 +254,7 @@ def compile_model(model, mode, lr):
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
         # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
-    elif mode == 'eval':
+    else:
         optimizer = tf.keras.optimizers.SGD(lr)
 
     # learning_rate=CustomSchedule(D_MODEL)
@@ -260,10 +279,11 @@ def compile_model(model, mode, lr):
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    my_loss = tf.keras.losses.BinaryCrossentropy(
-        label_smoothing=0.025
-    )
+    # my_loss = tf.keras.losses.BinaryCrossentropy(
+    #     label_smoothing=0.025
+    # )
     # my_loss = binary_focal_loss(alpha=0.5)
+    my_loss = sce_loss,
     # my_loss = 'mean_squared_error'
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -493,26 +513,40 @@ if __name__ == '__main__':
         'fraction_positives': fraction_positives,
         'SeqWeightedAttention': SeqWeightedAttention,
         'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
+        'sce_loss': sce_loss,
     }
 
-    strategy = tf.distribute.MirroredStrategy()
-    print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+    if args.mode == 'train' or args.mode == 'tune' or args.mode == 'eval':
+        strategy = tf.distribute.MirroredStrategy()
+        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
-    with strategy.scope():
-        # due to bugs need to load weights for mirrored strategy - cannot load full model
+        with strategy.scope():
+            # due to bugs need to load weights for mirrored strategy - cannot load full model
+            model = create_model(model_name, in_shape, args.mode)
+            if args.load is not None:
+                print('\nLoading weights from: ', args.load)
+                # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+                model.load_weights(args.load)
+            else:
+                print('\nTraining model from scratch.')
+            compile_model(model, args.mode, args.lr)
+    elif args.mode == 'explain':
         model = create_model(model_name, in_shape, args.mode)
         if args.load is not None:
             print('\nLoading weights from: ', args.load)
             # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
             model.load_weights(args.load)
         else:
-            print('\nTraining model from scratch.')
+            raise ValueError('Explain mode needs --load argument.')
         compile_model(model, args.mode, args.lr)
+        explain_dataset = tf_explain_dataset(args.eval_dir)
+        print('Explain dataset shape %s %s %s' % (len(explain_dataset), explain_dataset[0].shape, explain_dataset[1].shape))
 
     eval_dataset = input_dataset(
         args.eval_dir, is_training=False, batch_size=batch_size,
         cache=False if args.mode == 'eval' else True
     )
+
     # fractions, counts = class_fractions(eval_dataset)
     # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
@@ -552,7 +586,24 @@ if __name__ == '__main__':
             # lr_callback,
             # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
         ]
-
+        if args.mode == 'explain':
+            explain_callbacks=[
+                tf_explain.callbacks.GradCAMCallback(
+                    validation_data=explain_dataset, 
+                    layer_name='conv2d_22', 
+                    class_index=1,
+                ),
+                tf_explain.callbacks.OcclusionSensitivityCallback(
+                    validation_data=explain_dataset,
+                    class_index=1,
+                    patch_size=4,
+                ),
+                tf_explain.callbacks.ActivationsVisualizationCallback(
+                    validation_data=explain_dataset, 
+                    layers_name=['conv2d_21']
+                )
+            ]
+        callbacks.extend(explain_callbacks)
         # class_weight = {0: 0.45, 1: 0.55}
         history = model.fit(train_dataset, epochs=num_epochs,  # class_weight=class_weight,
                             validation_data=eval_dataset,  # validation_steps=validation_steps,
