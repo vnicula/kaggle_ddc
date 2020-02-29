@@ -10,7 +10,7 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB3
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -419,9 +419,10 @@ def create_efficientnet_model(input_shape, mode):
     # create the base pre-trained model
     efficientnet_weights = None
     if mode == 'train':
-        efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        efficientnet_weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        # efficientnet_weights = 'imagenet'
     print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB0(weights=efficientnet_weights, input_tensor=input_tensor,
+    base_model = EfficientNetB1(weights=efficientnet_weights, input_tensor=input_tensor,
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -429,9 +430,9 @@ def create_efficientnet_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last efficient net layers!')
-        for layer in base_model.layers[:227]:
+        for layer in base_model.layers[:329]:
             layer.trainable = False
-        for layer in base_model.layers[227:]:
+        for layer in base_model.layers[329:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
@@ -452,7 +453,7 @@ def create_efficientnet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid',
+    out = Dense(2, activation='softmax',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     model = Model(inputs=base_model.input, outputs=out)
