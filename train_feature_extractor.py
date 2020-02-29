@@ -151,7 +151,7 @@ class TbAugmentation:
         augmented_image, _ = image_augment(image, label)
         with self.file_writer.as_default():
             tf.summary.image(
-                self.name,
+                self.name + str(label),
                 [augmented_image],
                 step=self._counter,
                 max_outputs=self.max_images,
@@ -165,7 +165,7 @@ def prepare_dataset(ds, is_training, batch_size, cache):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
 
-    AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
+    # AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
 
     ds = balance_dataset(ds, is_training)
 
@@ -177,7 +177,8 @@ def prepare_dataset(ds, is_training, batch_size, cache):
             ds = ds.cache()
 
     if is_training:
-        ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        # ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        ds = ds.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     else:
         # TODO: seems rejection_resample doesn't work with keras fit
         # resampler = tf.data.experimental.rejection_resample(
@@ -185,7 +186,6 @@ def prepare_dataset(ds, is_training, batch_size, cache):
         # ds = ds.apply(resampler)
         # ds = ds.map(lambda extra_label, features_and_label: features_and_label)
 
-        # ds = balance_dataset(ds)
         pass
 
     # Repeat forever
@@ -276,15 +276,17 @@ def compile_model(model, mode, lr):
         # lr_metric,
         # Write TensorBoard logs to `./logs` directory
     ]
+
+    my_loss = tf.keras.losses.BinaryCrossentropy(
+        # label_smoothing=0.025
+    )
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
-    # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-    # my_loss = tf.keras.losses.BinaryCrossentropy(
-    #     label_smoothing=0.025
-    # )
-    # my_loss = binary_focal_loss(alpha=0.5)
-    my_loss = sce_loss,
-    # my_loss = 'mean_squared_error'
+        # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+        # my_loss = binary_focal_loss(alpha=0.5)
+        my_loss = sce_loss,
+        # my_loss = 'mean_squared_error'
+    
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
@@ -566,7 +568,8 @@ if __name__ == '__main__':
             tf.keras.callbacks.ModelCheckpoint(
                 filepath='featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
                 save_best_only=True,
-                monitor='val_binary_crossentropy',
+                monitor='val_auc',
+                mode='max',
                 # save_format='tf',
                 save_weights_only=True,
                 verbose=1),
@@ -575,7 +578,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_auc',
                 min_delta=1e-4,
-                patience=10,
+                patience=20,
                 mode='max',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
