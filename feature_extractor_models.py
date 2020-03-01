@@ -105,7 +105,7 @@ class MesoInception5():
         # y = Dense(32*self.width)(y)
         # y = LeakyReLU(alpha=0.1)(y)
         # y = Dropout(0.5)(y)
-        y = Dense(2, activation = 'softmax', kernel_regularizer=tf.keras.regularizers.l2(0.02))(y)
+        y = Dense(1, activation = 'sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(y)
 
         return Model(inputs = x, outputs = y)
 
