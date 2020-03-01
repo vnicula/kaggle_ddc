@@ -448,14 +448,14 @@ def create_mobilenet_model(input_shape, mode):
 
 def create_efficientnet_model(input_shape, mode):
 
-    input_tensor = Input(shape=input_shape)
+    # input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
     efficientnet_weights = None
     if mode == 'train':
         efficientnet_weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         # efficientnet_weights = 'imagenet'
     print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB1(weights=efficientnet_weights, input_tensor=input_tensor,
+    base_model = EfficientNetB1(weights=efficientnet_weights, input_shape=input_shape,
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -486,15 +486,15 @@ def create_efficientnet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(2, activation='softmax',
+    out = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
-    model = Model(inputs=base_model.input, outputs=out)
-    for i, layer in enumerate(model.layers):
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(backbone_model.layers):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model
+    return create_dual_model_with_backbone(input_shape, backbone_model)
 
 
 def create_resnet_model(input_shape, mode):
@@ -624,7 +624,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_loss',
                 min_delta=1e-4,
-                patience=10,
+                patience=20,
                 mode='min',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
