@@ -361,13 +361,12 @@ def create_onemil_model(input_shape, mode):
 
 def create_xception_model(input_shape, mode):
 
-    input_tensor = Input(shape=input_shape)
     xception_weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
     if mode == 'train':
         print('Loading xception weights from: ', xception_weights)
         base_model = Xception(weights=xception_weights,
-                            input_tensor=input_tensor, include_top=False, pooling='avg')
+                            input_shape=input_shape, include_top=False, pooling='avg')
         # print('\nFreezing all Xception layers!')
         # for layer in base_model.layers:
         #     layer.trainable = False
@@ -391,16 +390,16 @@ def create_xception_model(input_shape, mode):
     net = base_model.output
     # net = Dropout(0.5)(net)
     # net = Dense(256, activation='relu')(net)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     out = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
-    model = Model(inputs=base_model.input, outputs=out)
-    for i, layer in enumerate(model.layers):
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(backbone_model.layers):
         print(i, layer.name, layer.trainable)
-    print(model.summary())
 
-    return model
+
+    return create_dual_model_with_backbone(input_shape, backbone_model)
 
 
 def create_mobilenet_model(input_shape, mode):
