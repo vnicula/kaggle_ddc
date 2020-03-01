@@ -492,7 +492,6 @@ def create_efficientnet_model(input_shape, mode):
     backbone_model = Model(inputs=base_model.input, outputs=out)
     for i, layer in enumerate(backbone_model.layers):
         print(i, layer.name, layer.trainable)
-    print(model.summary())
 
     return create_dual_model_with_backbone(input_shape, backbone_model)
 
