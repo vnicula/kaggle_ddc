@@ -347,6 +347,16 @@ def create_meso_model(input_shape, mode):
     return create_dual_model_with_backbone(input_shape, classifier.model)
 
 
+def create_meso5_model(input_shape, mode):
+
+    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+
+    for i, layer in enumerate(classifier.model.layers):
+        print(i, layer.name, layer.trainable)
+
+    return create_dual_model_with_backbone(input_shape, classifier.model)
+
+
 def create_onemil_model(input_shape, mode):
 
     classifier = featx.OneMIL(input_shape)
@@ -404,12 +414,11 @@ def create_xception_model(input_shape, mode):
 
 def create_mobilenet_model(input_shape, mode):
 
-    input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
     mobilenet_weights = 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5'
     print('Loading mobilenet weights from: ', mobilenet_weights)
     base_model = MobileNetV2(weights=mobilenet_weights, alpha=0.5,
-                             input_tensor=input_tensor, include_top=False, pooling='avg')
+                             input_shape=input_shape, include_top=False, pooling='avg')
 
     if mode == 'train':
         # print('\nFreezing all Mobilenet layers!')
@@ -437,12 +446,11 @@ def create_mobilenet_model(input_shape, mode):
     out = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
-    model = Model(inputs=base_model.input, outputs=out)
-    for i, layer in enumerate(model.layers):
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(backbone_model.layers):
         print(i, layer.name, layer.trainable)
-    print(model.summary())
 
-    return model
+    return create_dual_model_with_backbone(input_shape, backbone_model)
 
 
 def create_efficientnet_model(input_shape, mode):
@@ -523,6 +531,8 @@ def create_model(model_name, input_shape, mode):
         return create_mobilenet_model(input_shape, mode)
     if model_name == 'meso':
         return create_meso_model(input_shape, mode)
+    if model_name == 'meso5':
+        return create_meso5_model(input_shape, mode)
     if model_name == 'onemil':
         return create_onemil_model(input_shape, mode)
     if model_name == 'xception':
