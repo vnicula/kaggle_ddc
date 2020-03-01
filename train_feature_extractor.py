@@ -1,6 +1,7 @@
 import argparse
 import constants
 import feature_extractor_models as featx
+import imageio
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
@@ -276,7 +277,7 @@ def compile_model(model, mode, lr):
         # lr_metric,
 
         tf.keras.metrics.CategoricalAccuracy(name='acc'),
-        tf.keras.losses.categorical_crossentropy(),
+        tf.keras.losses.categorical_crossentropy,
     ]
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
