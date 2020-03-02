@@ -108,7 +108,7 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
     #     x, min_jpeg_quality=80, max_jpeg_quality=100))
 
-    return {'input_1':img, 'input_2':x['input_2'], 'name':x['name']}, y
+    return {'input_1':img, 'input_2':x['input_2']}, y
 
 
 def tfrecords_dataset(input_dir, is_training):
