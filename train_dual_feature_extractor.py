@@ -364,9 +364,7 @@ def create_onemil_model(input_shape, mode):
     for i, layer in enumerate(classifier.model.layers):
         print(i, layer.name, layer.trainable)
 
-    print(classifier.model.summary())
-
-    return classifier.model
+    return create_dual_model_with_backbone(input_shape, classifier.model)
 
 
 def create_xception_model(input_shape, mode):
@@ -545,6 +543,22 @@ def create_model(model_name, input_shape, mode):
     raise ValueError('Unknown model %s' % model_name)
 
 
+class SavingBackboneCallback(tf.keras.callbacks.Callback):
+
+    def __init__(self, model, file_name):
+        super(SavingBackboneCallback, self).__init__()
+        self.backbone_model = model
+        self.file_name = file_name
+        self.best = np.Inf
+
+    def on_epoch_end(self, epoch, logs=None):
+        current = logs.get('val_loss')
+        if np.less(current, self.best):
+            self.best = current
+            print('Saving backbone model weights to %s.' % self.file_name)
+            self.backbone_model.save_weights(self.file_name)
+
+
 if __name__ == '__main__':
 
     t0 = time.time()
@@ -643,6 +657,7 @@ if __name__ == '__main__':
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
             # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
+            SavingBackboneCallback(backbone_model, 'dual_featx_backbone_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode))
         ]
         if args.mode == 'explain':
             explain_callbacks=[
