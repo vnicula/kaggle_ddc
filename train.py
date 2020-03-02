@@ -79,7 +79,7 @@ def random_rotate(image):
     return image
 
 
-# @tf.function
+@tf.function
 def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
     Args:
@@ -144,7 +144,7 @@ def tfrecords_dataset(input_dir, is_training):
     dataset = balance_dataset(dataset, is_training)
     if is_training:
         dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.shuffle(buffer_size=512)
+        dataset = dataset.shuffle(buffer_size=256)
     else:
         dataset = dataset.cache()
 
@@ -336,6 +336,8 @@ def create_model(input_shape, model_name):
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     # net = SeqWeightedAttention()(net, mask=input_mask)
+    net = TimeDistributed(Dropout(0.25))(net)
+    net = TimeDistributed(Dense(128, activation='elu'))(net)
     net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
