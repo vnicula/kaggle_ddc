@@ -17,7 +17,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
-from efficientnet.tfkeras import EfficientNetB0
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -61,6 +61,24 @@ def random_jitter(image):
     return image
 
 
+def random_rotate(image):
+    # if image.shape.__len__() == 4:
+    #     random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 4, maxval = np.pi / 4)
+    # if image.shape.__len__() == 3:
+    #     random_angles = tf.random.uniform(shape = (), minval = -np.pi / 4, maxval = np.pi / 4)
+
+    # # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
+    # return tfa.image.rotate(image, random_angles)
+
+    # NOTE this needs numpy
+    image_array = tf.keras.preprocessing.image.random_rotation(
+        image.numpy(), 30, row_axis=1, col_axis=2, channel_axis=3, fill_mode='constant', cval=0.0,
+        interpolation_order=1
+    )
+    # image = tf.convert_to_tensor(image_array)
+    return image
+
+
 # @tf.function
 def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
@@ -80,8 +98,8 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     img = tf.image.random_flip_left_right(img)
 
     # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    # x = tf.cond(rotate_choice < 0.5, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
-    # x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    # img = tf.cond(rotate_choice < 0.5, lambda: img, lambda: tf.py_function(random_rotate, [img], tf.float32))
+    # img = tf.reshape(img, [constants.SEQ_LEN, constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
     
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     img = tf.cond(jitter_choice < 0.5, lambda: img, lambda: random_jitter(img))
@@ -123,11 +141,11 @@ def tfrecords_dataset(input_dir, is_training):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    dataset = balance_dataset(dataset, is_training)
     if is_training:
         dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(buffer_size=512)
     else:
-        dataset = balance_dataset(dataset, is_training)
         dataset = dataset.cache()
 
     return dataset
@@ -194,7 +212,7 @@ def load_efficientnet_model(input_shape, weights):
     # efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     efficientnet_weights = None
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB0(weights=efficientnet_weights, # input_tensor=input_layer, 
+    base_model = EfficientNetB1(weights=efficientnet_weights, # input_tensor=input_layer, 
         input_shape=input_shape, 
         include_top=False, pooling='avg')
 
@@ -420,7 +438,7 @@ if __name__ == '__main__':
         
         class_weight={0: 0.82, 1: 0.18}
         # class_weight=[0.99, 0.01]
-        history = model.fit(train_dataset, epochs=num_epochs, class_weight=class_weight, 
+        history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, 'final_%s_model' % args.model_name)
