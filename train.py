@@ -108,9 +108,7 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
     #     x, min_jpeg_quality=80, max_jpeg_quality=100))
 
-    x['input_1'] = img
-
-    return (x, y)
+    return {'input_1':img, 'input_2':x['input_2'], 'name':x['name']}, y
 
 
 def tfrecords_dataset(input_dir, is_training):
@@ -244,6 +242,21 @@ def load_meso_model(input_shape, weights):
     return feature_extractor
 
 
+def load_resnet_model(input_shape, weights):
+
+    backbone_model = featx.resnet_18(input_shape, 4)
+
+    for i, layer in enumerate(backbone_model.layers):
+        # print(i, layer.name, layer.trainable)
+        if layer.name == 'flatten':
+            output = layer.output
+            print('output set to {}.'.format(layer.name))
+
+    feature_extractor = Model(inputs=backbone_model.input, outputs=output)
+
+    return feature_extractor
+
+
 # TODO: use Bidirectional and try narrower MobileNet
 # TODO: explore removal of projection at the end of MobileNet to LSTM
 # TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
@@ -279,6 +292,8 @@ def create_model(input_shape, model_name):
         feature_extractor = load_meso_model(input_shape[-3:], weights)
     elif model_name == 'efficientnet':
         feature_extractor = load_efficientnet_model(input_shape[-3:], weights)
+    elif model_name == 'resnet':
+        feature_extractor = load_resnet_model(input_shape[-3:], weights)
     else:
         raise ValueError('Unknown feature extractor.')
 

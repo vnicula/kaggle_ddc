@@ -696,6 +696,7 @@ if __name__ == '__main__':
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
             backbone_model_file_name = args.load + '_' + backbone_model_file_name
+            backbone_model_weights_file_name = args.load + '_' + backbone_model_weights_file_name
         model.save(model_file_name)
         backbone_model.save_weights(backbone_model_weights_file_name)
         backbone_model.save(backbone_model_file_name)
