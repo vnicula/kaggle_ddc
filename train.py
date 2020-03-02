@@ -351,9 +351,9 @@ def create_model(input_shape, model_name):
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     # net = SeqWeightedAttention()(net, mask=input_mask)
-    net = TimeDistributed(Dropout(0.25))(net)
-    net = TimeDistributed(Dense(128, activation='elu'))(net)
-    net = Bidirectional(GRU(128, return_sequences=False))(net, mask=input_mask)
+    net = TimeDistributed(Dropout(0.5))(net)
+    net = TimeDistributed(Dense(64, activation='elu'))(net)
+    net = Bidirectional(GRU(64, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     net = Dropout(0.5)(net)
@@ -453,7 +453,7 @@ if __name__ == '__main__':
                 factor=0.96, patience=2, min_lr=5e-6, verbose=1, mode='min')
         ]
         
-        class_weight={0: 0.82, 1: 0.18}
+        # class_weight={0: 0.82, 1: 0.18}
         # class_weight=[0.99, 0.01]
         history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 

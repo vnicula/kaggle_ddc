@@ -548,7 +548,7 @@ class SavingBackboneCallback(tf.keras.callbacks.Callback):
     def __init__(self, model, file_name):
         super(SavingBackboneCallback, self).__init__()
         self.backbone_model = model
-        self.file_name = file_name
+        self.file_name, self.file_ext = os.path.splitext(file_name)
         self.best = np.Inf
 
     def on_epoch_end(self, epoch, logs=None):
@@ -556,7 +556,7 @@ class SavingBackboneCallback(tf.keras.callbacks.Callback):
         if np.less(current, self.best):
             self.best = current
             print('Saving backbone model weights to %s.' % self.file_name)
-            self.backbone_model.save_weights(self.file_name)
+            self.backbone_model.save_weights(self.file_name + '_%s.' % str(epoch) + self.file_ext)
 
 
 if __name__ == '__main__':
