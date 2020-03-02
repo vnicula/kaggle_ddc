@@ -657,7 +657,7 @@ if __name__ == '__main__':
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
             # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
-            SavingBackboneCallback(backbone_model, 'dual_featx_backbone_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode))
+            SavingBackboneCallback(backbone_model, 'dual_featx_backbone_weights_%s.h5' % (model_name + '_' + args.mode))
         ]
         if args.mode == 'explain':
             explain_callbacks=[
