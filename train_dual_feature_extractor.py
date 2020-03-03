@@ -10,7 +10,7 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB3
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -105,7 +105,7 @@ def random_rotate(image):
         image.numpy(), 30, row_axis=0, col_axis=1, channel_axis=2, fill_mode='constant', cval=0.0,
         interpolation_order=1
     )
-    image = tf.convert_to_tensor(image_array)
+    # image = tf.convert_to_tensor(image_array)
     return image
 
 
@@ -327,8 +327,6 @@ def compile_model(model, mode, lr):
 
 def create_meso_model(input_shape, mode):
 
-    # classifier = featx.MesoInception5(width=1, input_shape=input_shape)
-
     classifier = featx.MesoInception4(input_shape)
 
     if mode == 'train':
@@ -457,10 +455,10 @@ def create_efficientnet_model(input_shape, mode):
     # create the base pre-trained model
     efficientnet_weights = None
     if mode == 'train':
-        efficientnet_weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        efficientnet_weights = 'pretrained/efficientnet-b4_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         # efficientnet_weights = 'imagenet'
     print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB1(weights=efficientnet_weights, input_shape=input_shape,
+    base_model = EfficientNetB4(weights=efficientnet_weights, input_shape=input_shape,
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -468,9 +466,10 @@ def create_efficientnet_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last efficient net layers!')
-        for layer in base_model.layers[:329]:
+        # NOTE EffnetB1 and B2 both have top layer at 329
+        for layer in base_model.layers[:464]:
             layer.trainable = False
-        for layer in base_model.layers[329:]:
+        for layer in base_model.layers[464:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
@@ -555,8 +554,9 @@ class SavingBackboneCallback(tf.keras.callbacks.Callback):
         current = logs.get('val_loss')
         if np.less(current, self.best):
             self.best = current
-            print('Saving backbone model weights to %s.' % self.file_name)
-            self.backbone_model.save_weights(self.file_name + '_%s.' % str(epoch) + self.file_ext)
+            saved_file_name = self.file_name + '_%s' % str(epoch) + self.file_ext
+            print('Saving backbone model weights to %s.' % saved_file_name)
+            self.backbone_model.save_weights(saved_file_name)
 
 
 if __name__ == '__main__':
@@ -634,7 +634,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
+                filepath='temp/dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -650,14 +650,14 @@ if __name__ == '__main__':
                 mode='min',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
-                'training_dual_featx_%s_log.csv' % model_name),
+                'temp/training_dual_featx_%s_log.csv' % model_name),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
             # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
-            SavingBackboneCallback(backbone_model, 'dual_featx_backbone_weights_%s.h5' % (model_name + '_' + args.mode))
+            SavingBackboneCallback(backbone_model, 'temp/dual_featx_backbone_weights_%s.h5' % (model_name + '_' + args.mode))
         ]
         if args.mode == 'explain':
             explain_callbacks=[
@@ -684,7 +684,7 @@ if __name__ == '__main__':
                             callbacks=callbacks)
 
         # lr_callback.plot_schedule()
-        save_loss(history, 'final_dual_featx_%s_model' % model_name)
+        save_loss(history, 'temp/final_dual_featx_%s_model' % model_name)
 
     elif args.mode == 'eval':
         model.evaluate(eval_dataset)
@@ -697,9 +697,9 @@ if __name__ == '__main__':
             model_file_name = args.load + '_' + model_file_name
             backbone_model_file_name = args.load + '_' + backbone_model_file_name
             backbone_model_weights_file_name = args.load + '_' + backbone_model_weights_file_name
-        model.save(model_file_name)
-        backbone_model.save_weights(backbone_model_weights_file_name)
-        backbone_model.save(backbone_model_file_name)
+        model.save(os.path.join('temp', model_file_name))
+        backbone_model.save_weights(os.path.join('temp', backbone_model_weights_file_name))
+        backbone_model.save(os.path.join('temp', backbone_model_file_name))
 
         new_model = tf.keras.models.load_model(
             model_file_name, custom_objects=custom_objs)
