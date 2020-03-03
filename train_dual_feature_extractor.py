@@ -702,7 +702,7 @@ if __name__ == '__main__':
         backbone_model.save(os.path.join('temp', backbone_model_file_name))
 
         new_model = tf.keras.models.load_model(
-            model_file_name, custom_objects=custom_objs)
+            os.path.join('temp', model_file_name), custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()
