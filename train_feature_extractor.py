@@ -90,7 +90,7 @@ def random_rotate(image):
         image.numpy(), 30, row_axis=0, col_axis=1, channel_axis=2, fill_mode='constant', cval=0.0,
         interpolation_order=1
     )
-    image = tf.convert_to_tensor(image_array)
+    # image = tf.convert_to_tensor(image_array)
     return image
 
 
@@ -323,22 +323,44 @@ def create_meso_model(input_shape, mode):
     return classifier.model
 
 
+def create_dual_model_with_backbone(input_shape, backbone_model):
+    input_left = tf.keras.layers.Input(shape=input_shape, name='input_left')
+    input_right = tf.keras.layers.Input(shape=input_shape, name='input_right')
+
+    net_left = backbone_model(input_left)
+    net_right = backbone_model(input_right)
+
+    net = tf.keras.layers.concatenate([net_left, net_right])
+    net = tf.keras.layers.Softmax()(net)
+
+    model = Model(inputs=[input_left, input_right], outputs=net)
+    print(model.summary())
+
+    return model, backbone_model
+
+
 def create_meso5_model(input_shape, mode, weights):
 
     classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+    dual_model, backbone_model = create_dual_model_with_backbone(input_shape, classifier.model)
+
     if weights is not None:
         print('\nLoading backbone weights from ', weights)
-        classifier.model.load_weights(weights)
-    net = classifier.model.output
-    net = Dense(1, activation='sigmoid')(net)
-    model = Model(inputs=classifier.model.input, outputs=net)
+        dual_model.load_weights(weights)
 
     if mode == 'train':
         print('\nFreezing all conv Meso5 layers!')
-        for i, layer in enumerate(model.layers):
-            if i < 40:
+        for i, layer in enumerate(backbone_model.layers):
+            if i < 39:
                 layer.trainable = False
             print(i, layer.name, layer.trainable)
+
+    input_tensor = Input(shape=input_shape)
+    net = backbone_model(input_tensor)
+    # net = Dense(1, activation='sigmoid')(net)
+    net = Activation('sigmoid')(net)
+    model = Model(inputs=input_tensor, outputs=net)
+
 
     print(model.summary())
 

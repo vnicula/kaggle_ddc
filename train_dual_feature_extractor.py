@@ -15,7 +15,7 @@ from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
+from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
@@ -516,7 +516,8 @@ def create_dual_model_with_backbone(input_shape, backbone_model):
     net_right = backbone_model(input_right)
 
     net = tf.keras.layers.concatenate([net_left, net_right])
-    net = tf.keras.layers.Softmax()(net)
+    # net = tf.keras.layers.Softmax()(net)
+    net = Activation('sigmoid')(net)
 
     model = Model(inputs=[input_left, input_right], outputs=net)
     print(model.summary())
