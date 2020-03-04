@@ -457,10 +457,10 @@ def create_efficientnet_model(input_shape, mode):
     # create the base pre-trained model
     efficientnet_weights = None
     if mode == 'train':
-        efficientnet_weights = 'pretrained/efficientnet-b4_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        efficientnet_weights = 'pretrained/efficientnet-b2_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         # efficientnet_weights = 'imagenet'
     print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB4(weights=efficientnet_weights, input_shape=input_shape,
+    base_model = EfficientNetB2(weights=efficientnet_weights, input_shape=input_shape,
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
@@ -469,9 +469,9 @@ def create_efficientnet_model(input_shape, mode):
         #     layer.trainable = False
         print('\nUnfreezing last efficient net layers!')
         # NOTE EffnetB1 and B2 both have top layer at 329
-        for layer in base_model.layers[:464]:
+        for layer in base_model.layers[:329]:
             layer.trainable = False
-        for layer in base_model.layers[464:]:
+        for layer in base_model.layers[329:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
