@@ -342,11 +342,13 @@ def create_dual_model_with_backbone(input_shape, backbone_model):
 def create_meso5_model(input_shape, mode, weights):
 
     classifier = featx.MesoInception5(width=1, input_shape=input_shape)
-    dual_model, backbone_model = create_dual_model_with_backbone(input_shape, classifier.model)
+    backbone_model = classifier.model
+    # dual_model, backbone_model = create_dual_model_with_backbone(input_shape, classifier.model)
 
     if weights is not None:
         print('\nLoading backbone weights from ', weights)
-        dual_model.load_weights(weights)
+        # dual_model.load_weights(weights)
+        backbone_model.load_weights(weights)
 
     if mode == 'train':
         print('\nFreezing all conv Meso5 layers!')
@@ -355,12 +357,13 @@ def create_meso5_model(input_shape, mode, weights):
                 layer.trainable = False
             print(i, layer.name, layer.trainable)
 
-    input_tensor = Input(shape=input_shape)
-    net = backbone_model(input_tensor)
+    # input_tensor = Input(shape=input_shape)
+    # net = backbone_model(input_tensor)
     # net = Dense(1, activation='sigmoid')(net)
+    net = backbone_model.output
     net = Activation('sigmoid')(net)
-    model = Model(inputs=input_tensor, outputs=net)
-
+    # model = Model(inputs=input_tensor, outputs=net)
+    model = Model(inputs=backbone_model.input, outputs=net)
 
     print(model.summary())
 

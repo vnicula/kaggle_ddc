@@ -229,7 +229,7 @@ def run(file_list):
 #                 prediction_faces = [item for sublist in faces for item in sublist]
                 prediction_faces = np.array(faces, dtype=np.float32) / 255.0            
 #                 prediction_faces = np.array(prediction_faces, dtype=np.float32) / 127.5 - 1.0            
-                model_prediction = model.predict(prediction_faces)[:, 1].flatten()
+                model_prediction = model.predict(prediction_faces).flatten()
 #                 print('model preds: ', model_prediction)
                 if len(model_prediction) > 0:
 #                     model_prediction = np.sort(model_prediction)
