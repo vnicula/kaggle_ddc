@@ -275,8 +275,9 @@ def compile_model(model, mode, lr):
 
     if mode == 'train':
         # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        optimizer = tfa.optimizers.RectifiedAdam(lr)
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -694,9 +695,9 @@ if __name__ == '__main__':
         backbone_model_file_name = args.mode + '_backbone_dual_featx_%s_model.h5' % model_name
         backbone_model_weights_file_name = args.mode + '_backbone_dual_featx_%s_model_weights.h5' % model_name
         if args.load is not None:
-            model_file_name = args.load + '_' + model_file_name
-            backbone_model_file_name = args.load + '_' + backbone_model_file_name
-            backbone_model_weights_file_name = args.load + '_' + backbone_model_weights_file_name
+            model_file_name = os.path.basename(args.load) + '_' + model_file_name
+            backbone_model_file_name = os.path.basename(args.load) + '_' + backbone_model_file_name
+            backbone_model_weights_file_name = os.path.basename(args.load) + '_' + backbone_model_weights_file_name
         model.save(os.path.join('temp', model_file_name))
         backbone_model.save_weights(os.path.join('temp', backbone_model_weights_file_name))
         backbone_model.save(os.path.join('temp', backbone_model_file_name))

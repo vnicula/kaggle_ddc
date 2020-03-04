@@ -16,7 +16,7 @@ from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
+from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
@@ -193,9 +193,9 @@ def prepare_dataset(ds, is_training, batch_size, cache):
     # ds = ds.repeat()
 
     # Switch labels to one hot
-    def switch_to_onehot(features, label):
-        return features, tf.one_hot(label, depth=2)
-    ds = ds.map(switch_to_onehot, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # def switch_to_onehot(features, label):
+    #     return features, tf.one_hot(label, depth=2)
+    # ds = ds.map(switch_to_onehot, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     ds = ds.batch(batch_size)
 
@@ -242,15 +242,18 @@ def show_batch(image_batch, label_batch):
 
 
 def fraction_positives(y_true, y_pred):
-    return tf.keras.backend.mean(y_true[:, 1])
+    # NOTE one hot
+    # return tf.keras.backend.mean(y_true[:, 1])
+    return tf.keras.backend.mean(y_true)
 
 
 def compile_model(model, mode, lr):
 
     if mode == 'train':
         # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        optimizer = tfa.optimizers.RectifiedAdam(lr)
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -268,26 +271,26 @@ def compile_model(model, mode, lr):
         # tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
         # tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
         # tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
-        # tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
+        tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
         # tf.keras.metrics.Precision(name='precision', thresholds=thresh),
         # tf.keras.metrics.Recall(name='recall', thresholds=thresh),
         tf.keras.metrics.AUC(name='auc'),
         # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
-        # tf.keras.metrics.BinaryCrossentropy(),
+        tf.keras.metrics.BinaryCrossentropy(),
         # lr_metric,
 
-        tf.keras.metrics.CategoricalAccuracy(name='acc'),
-        tf.keras.losses.categorical_crossentropy,
+        # tf.keras.metrics.CategoricalAccuracy(name='acc'),
+        # tf.keras.losses.categorical_crossentropy,
     ]
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
-        # label_smoothing=0.025
+        label_smoothing=0.025
     )
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
         # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
         # my_loss = binary_focal_loss(alpha=0.5)
-        my_loss = sce_loss,
+        # my_loss = sce_loss,
         # my_loss = 'mean_squared_error'
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
@@ -313,10 +316,33 @@ def create_meso_model(input_shape, mode):
         print('\nUnfreezing all Meso layers!')
 
     for i, layer in enumerate(classifier.model.layers):
+
         print(i, layer.name, layer.trainable)
     print(classifier.model.summary())
 
     return classifier.model
+
+
+def create_meso5_model(input_shape, mode, weights):
+
+    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+    if weights is not None:
+        print('\nLoading backbone weights from ', weights)
+        classifier.model.load_weights(weights)
+    net = classifier.model.output
+    net = Dense(1, activation='sigmoid')(net)
+    model = Model(inputs=classifier.model.input, outputs=net)
+
+    if mode == 'train':
+        print('\nFreezing all conv Meso5 layers!')
+        for i, layer in enumerate(model.layers):
+            if i < 40:
+                layer.trainable = False
+            print(i, layer.name, layer.trainable)
+
+    print(model.summary())
+
+    return model
 
 
 def create_onemil_model(input_shape, mode):
@@ -477,11 +503,13 @@ def create_resnet_model(input_shape, mode):
     return model
 
 
-def create_model(model_name, input_shape, mode):
+def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'mobilenet':
         return create_mobilenet_model(input_shape, mode)
     if model_name == 'meso':
         return create_meso_model(input_shape, mode)
+    if model_name == 'meso5':
+        return create_meso5_model(input_shape, mode, backbone_weights)
     if model_name == 'onemil':
         return create_onemil_model(input_shape, mode)
     if model_name == 'xception':
@@ -504,6 +532,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_dir', type=str)
     parser.add_argument('--model_name', type=str, default='unknown')
     parser.add_argument('--load', type=str, default=None)
+    parser.add_argument('--backbone_weights', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
@@ -528,7 +557,7 @@ if __name__ == '__main__':
 
         with strategy.scope():
             # due to bugs need to load weights for mirrored strategy - cannot load full model
-            model = create_model(model_name, in_shape, args.mode)
+            model = create_model(model_name, in_shape, args.mode, args.backbone_weights)
             if args.load is not None:
                 print('\nLoading weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
