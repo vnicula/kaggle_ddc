@@ -317,8 +317,9 @@ def compile_model(model, mode, lr):
         METRICS.append(fraction_positives)
         # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
         # my_loss = binary_focal_loss(alpha=0.5)
-        my_loss = sce_loss,
+        # my_loss = sce_loss,
         # my_loss = 'mean_squared_error'
+        my_loss = tf.keras.losses.MeanSquaredError()
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
