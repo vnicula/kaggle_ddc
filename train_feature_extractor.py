@@ -370,16 +370,26 @@ def create_meso5_model(input_shape, mode, weights):
     return model
 
 
-def create_onemil_model(input_shape, mode):
+def create_onemil_model(input_shape, mode, weights):
 
-    classifier = featx.OneMIL(input_shape)
+    backbone_model = featx.OneMIL(input_shape).model
+    if weights is not None:
+        print('\nLoading backbone weights from ', weights)
+        backbone_model.load_weights(weights)
+    if mode == 'train':
+        print('\nFreezing all conv onemil layers!')
+        for i, layer in enumerate(backbone_model.layers):
+            if i < 12:
+                layer.trainable = False
+            print(i, layer.name, layer.trainable)
 
-    for i, layer in enumerate(classifier.model.layers):
-        print(i, layer.name, layer.trainable)
+    net = backbone_model.output
+    net = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
 
-    print(classifier.model.summary())
+    print(model.summary())
 
-    return classifier.model
+    return model
 
 
 def create_xception_model(input_shape, mode):
@@ -540,7 +550,7 @@ def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'meso5':
         return create_meso5_model(input_shape, mode, backbone_weights)
     if model_name == 'onemil':
-        return create_onemil_model(input_shape, mode)
+        return create_onemil_model(input_shape, mode, backbone_weights)
     if model_name == 'xception':
         return create_xception_model(input_shape, mode)
     if model_name == 'resnet':

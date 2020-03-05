@@ -570,6 +570,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str)
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--output_dir', type=str, default='temp')
     parser.add_argument('--model_name', type=str, default='unknown')
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')
@@ -581,12 +582,15 @@ if __name__ == '__main__':
     # validation_steps = 32
     batch_size = int(args.batch_size)
     model_name = args.model_name
+    output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
+
     in_shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3)
 
     custom_objs = {
         'fraction_positives': fraction_positives,
         'SeqWeightedAttention': SeqWeightedAttention,
-        'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
+        # 'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
         'sce_loss': sce_loss,
         'RectifiedAdam': tfa.optimizers.RectifiedAdam,
     }
@@ -638,7 +642,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='temp/dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
+                filepath=os.path.join(output_dir, 'dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode)),
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -654,14 +658,15 @@ if __name__ == '__main__':
                 mode='min',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
-                'temp/training_dual_featx_%s_log.csv' % model_name),
+                os.path.join(output_dir, 'training_dual_featx_%s_log.csv' % model_name)),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
             #                                      factor=0.96, patience=3, min_lr=5e-5, verbose=1, mode='min'),
             # lr_callback,
             # tf.keras.callbacks.TensorBoard(log_dir='./train_featx_%s_logs' % model_name),
-            SavingBackboneCallback(backbone_model, 'temp/dual_featx_backbone_weights_%s.h5' % (model_name + '_' + args.mode))
+            SavingBackboneCallback(backbone_model,
+                os.path.join(output_dir, 'dual_featx_backbone_weights_%s.h5' % (model_name + '_' + args.mode)))
         ]
         if args.mode == 'explain':
             explain_callbacks=[
@@ -688,7 +693,7 @@ if __name__ == '__main__':
                             callbacks=callbacks)
 
         # lr_callback.plot_schedule()
-        save_loss(history, 'temp/final_dual_featx_%s_model' % model_name)
+        save_loss(history, os.path.join(output_dir, 'final_dual_featx_%s_model' % model_name))
 
     elif args.mode == 'eval':
         model.evaluate(eval_dataset)
@@ -701,12 +706,12 @@ if __name__ == '__main__':
             model_file_name = os.path.basename(args.load) + '_' + model_file_name
             backbone_model_file_name = os.path.basename(args.load) + '_' + backbone_model_file_name
             backbone_model_weights_file_name = os.path.basename(args.load) + '_' + backbone_model_weights_file_name
-        model.save(os.path.join('temp', model_file_name))
-        backbone_model.save_weights(os.path.join('temp', backbone_model_weights_file_name))
-        backbone_model.save(os.path.join('temp', backbone_model_file_name))
+        model.save(os.path.join(output_dir, model_file_name))
+        backbone_model.save_weights(os.path.join(output_dir, backbone_model_weights_file_name))
+        backbone_model.save(os.path.join(output_dir, backbone_model_file_name))
 
         new_model = tf.keras.models.load_model(
-            os.path.join('temp', model_file_name), custom_objects=custom_objs)
+            os.path.join(output_dir, model_file_name), custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()
