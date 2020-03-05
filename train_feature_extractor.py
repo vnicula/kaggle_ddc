@@ -11,7 +11,7 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB3
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
@@ -469,26 +469,34 @@ def create_mobilenet_model(input_shape, mode):
     return model
 
 
-def create_efficientnet_model(input_shape, mode):
+def create_efficientnet_model(input_shape, mode, weights):
 
     input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
     efficientnet_weights = None
-    if mode == 'train':
-        efficientnet_weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-        # efficientnet_weights = 'imagenet'
-    print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB1(weights=efficientnet_weights, input_tensor=input_tensor,
-                                include_top=False, pooling='avg')
+    # efficientnet_weights = 'imagenet'
+    if weights is None:
+        efficientnet_weights = 'pretrained/efficientnet-b2_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', efficientnet_weights)
+    base_model = EfficientNetB2(weights=efficientnet_weights, input_tensor=input_tensor,
+                                    include_top=False, pooling='avg')
+
+    net = base_model.output
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+
+    if weights is not None:
+        print('Loading backbone_model weights from: ', weights)
+        backbone_model.load_weights(weights)
 
     if mode == 'train':
-        print('\nFreezing all EfficientNet layers!')
-        # for layer in base_model.layers:
-        #     layer.trainable = False
-        print('\nUnfreezing last efficient net layers!')
-        for layer in base_model.layers[:329]:
+        train_layer = 334 if weights is not None else 329
+        print('\nUnfreezing efficient net layers starting {}'.format(train_layer))
+        for layer in backbone_model.layers[:train_layer]:
             layer.trainable = False
-        for layer in base_model.layers[329:]:
+        for layer in backbone_model.layers[train_layer:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')
@@ -506,13 +514,9 @@ def create_efficientnet_model(input_shape, mode):
         # for layer in base_model.layers[258:]:
         #     layer.trainable = True
 
-    net = base_model.output
-    # net = Dense(1024, activation='relu')(net)
-    net = Dropout(0.5)(net)
-    out = Dense(2, activation='softmax',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
-
-    model = Model(inputs=base_model.input, outputs=out)
+    net = backbone_model.output
+    out = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=out)
     for i, layer in enumerate(model.layers):
         print(i, layer.name, layer.trainable)
     print(model.summary())
@@ -542,7 +546,7 @@ def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'resnet':
         return create_xception_model(input_shape, mode)
     if model_name == 'efficientnet':
-        return create_efficientnet_model(input_shape, mode)
+        return create_efficientnet_model(input_shape, mode, backbone_weights)
 
     raise ValueError('Unknown model %s' % model_name)
 

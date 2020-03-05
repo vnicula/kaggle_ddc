@@ -17,7 +17,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.applications.xception import Xception
@@ -210,7 +210,7 @@ def load_efficientnet_model(input_shape, weights):
     # efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     efficientnet_weights = None
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB1(weights=efficientnet_weights, # input_tensor=input_layer, 
+    base_model = EfficientNetB2(weights=efficientnet_weights, # input_tensor=input_layer, 
         input_shape=input_shape, 
         include_top=False, pooling='avg')
 
