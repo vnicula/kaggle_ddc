@@ -307,19 +307,19 @@ def compile_model(model, mode, lr):
         tf.keras.losses.categorical_crossentropy,
     ]
 
-    # my_loss = tf.keras.losses.BinaryCrossentropy(
-    #     # label_smoothing=0.025
-    # )
-    my_loss = tf.keras.losses.CategoricalCrossentropy(
+    my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
     )
+    # my_loss = tf.keras.losses.CategoricalCrossentropy(
+    #     label_smoothing=0.025
+    # )
     if mode == 'train' or mode == 'tune':
         METRICS.append(fraction_positives)
         # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
         # my_loss = binary_focal_loss(alpha=0.5)
         # my_loss = sce_loss,
-        # my_loss = 'mean_squared_error'
-        my_loss = tf.keras.losses.MeanSquaredError()
+        my_loss = 'mean_squared_error'
+        # my_loss = tf.keras.losses.MeanSquaredError()
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -492,7 +492,7 @@ def create_efficientnet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid',
+    out = Dense(1, activation=None,
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     backbone_model = Model(inputs=base_model.input, outputs=out)
