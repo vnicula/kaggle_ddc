@@ -100,7 +100,7 @@ if __name__ == '__main__':
     tuner = RandomSearch(
         hypermodel,
         objective='val_loss',
-        max_trials=10,
+        max_trials=20,
         project_name='img256_resnet',
         directory='test_directory')
 

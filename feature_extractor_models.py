@@ -55,7 +55,7 @@ class MesoInception4():
         y = Dense(16)(y)
         y = LeakyReLU(alpha=0.1)(y)
         y = Dropout(0.5)(y)
-        y = Dense(1, activation = 'sigmoid')(y)
+        y = Dense(1, activation=None)(y)
 
         return Model(inputs = x, outputs = y)
 

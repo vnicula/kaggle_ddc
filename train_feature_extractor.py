@@ -300,28 +300,30 @@ def compile_model(model, mode, lr):
     return model
 
 
-def create_meso_model(input_shape, mode):
+def create_meso_model(input_shape, mode, weights):
 
-    classifier = featx.MesoInception5(width=1, input_shape=input_shape)
+    classifier = featx.MesoInception4(input_shape=input_shape)
+    backbone_model = classifier.model
 
-    # classifier = featx.MesoInception4(input_shape)
+    if weights is not None:
+        print('\nLoading backbone weights from ', weights)
+        # dual_model.load_weights(weights)
+        backbone_model.load_weights(weights)
 
     if mode == 'train':
-        # meso4_weights = 'pretrained/Meso/c23/all/weights.h5'
-        # classifier.model.load_weights(meso4_weights)
-        print('\nUnfreezing all conv Meso layers!')
-        # for layer in classifier.model.layers:
-        #     if 'dense' not in layer.name:
-        #         layer.trainable = False
-    if mode == 'tune':
-        print('\nUnfreezing all Meso layers!')
+        print('\nFreezing all conv Meso5 layers!')
+        for i, layer in enumerate(backbone_model.layers):
+            if i < 28:
+                layer.trainable = False
+            print(i, layer.name, layer.trainable)
 
-    for i, layer in enumerate(classifier.model.layers):
+    net = backbone_model.output
+    net = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
 
-        print(i, layer.name, layer.trainable)
-    print(classifier.model.summary())
+    print(model.summary())
 
-    return classifier.model
+    return model
 
 
 def create_dual_model_with_backbone(input_shape, backbone_model):
@@ -535,10 +537,26 @@ def create_efficientnet_model(input_shape, mode, weights):
     return model
 
 
-def create_resnet_model(input_shape, mode):
+def create_resnet_model(input_shape, mode, weights):
 
-    model = featx.resnet_18(input_shape, num_filters=4)
+    backbone_model = featx.resnet_18(input_shape, num_filters=4)
+    if weights is not None:
+        print('\nLoading backbone weights from ', weights)
+        backbone_model.load_weights(weights)
+    if mode == 'train':
+        print('\nFreezing all conv onemil layers!')
+        for i, layer in enumerate(backbone_model.layers):
+            if i < 79:
+                layer.trainable = False
+            print(i, layer.name, layer.trainable)
+
+    net = backbone_model.output
+    net = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
     print(model.summary())
+
+    return model
 
     return model
 
@@ -547,7 +565,7 @@ def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'mobilenet':
         return create_mobilenet_model(input_shape, mode)
     if model_name == 'meso':
-        return create_meso_model(input_shape, mode)
+        return create_meso_model(input_shape, mode, backbone_weights)
     if model_name == 'meso5':
         return create_meso5_model(input_shape, mode, backbone_weights)
     if model_name == 'onemil':
@@ -555,7 +573,7 @@ def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'xception':
         return create_xception_model(input_shape, mode)
     if model_name == 'resnet':
-        return create_xception_model(input_shape, mode)
+        return create_resnet_model(input_shape, mode, backbone_weights)
     if model_name == 'efficientnet':
         return create_efficientnet_model(input_shape, mode, backbone_weights)
 

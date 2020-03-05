@@ -648,7 +648,7 @@ if __name__ == '__main__':
             tf.keras.callbacks.ModelCheckpoint(
                 filepath=os.path.join(output_dir, 'dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode)),
                 save_best_only=True,
-                monitor='val_loss',
+                monitor='val_categorical_crossentropy',
                 mode='min',
                 # save_format='tf',
                 save_weights_only=True,
