@@ -54,13 +54,17 @@ def get_label(file_path):
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
+
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
+
+    # TODO make sure you take this out for non xception backbones
+    # img = tf.cast(img, tf.float32)
+    # img = tf.keras.applications.xception.preprocess_input(img)
+    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+
     # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0,
     #     target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
-
-    # Xception
-    # img = tf.cast(img, tf.float32)
 
     # resize the image to the desired size.
     # img = tf.image.resize(img, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH])
@@ -130,9 +134,6 @@ def process_path(file_path):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = decode_img(img)
-    # TODO make sure you take this out for non xception backbones
-    # img = tf.keras.applications.xception.preprocess_input(img)
-    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
 
     return img, label
 

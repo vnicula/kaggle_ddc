@@ -53,8 +53,15 @@ def get_label(file_path):
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
+
     # Use `convert_image_dtype` to convert to floats in the [0,1] range.
     img = tf.image.convert_image_dtype(img, tf.float32)
+
+    # TODO make sure you take this out for non xception backbones
+    # img = tf.cast(img, tf.float32)
+    # img = tf.keras.applications.xception.preprocess_input(img)
+    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+
     img_shape = tf.shape(img)
     # assert img_shape[0] == img_shape[1] and img_shape[1] % 2 == 0
     w_offset = img_shape[1] // 2
@@ -156,9 +163,6 @@ def process_path(file_path):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = decode_img(img)
-    # TODO make sure you take this out for non xception backbones
-    # img = tf.keras.applications.xception.preprocess_input(img)
-    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
 
     return img, label
 
@@ -318,7 +322,7 @@ def compile_model(model, mode, lr):
         # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
         # my_loss = binary_focal_loss(alpha=0.5)
         # my_loss = sce_loss,
-        my_loss = 'mean_squared_error'
+        # my_loss = 'mean_squared_error'
         # my_loss = tf.keras.losses.MeanSquaredError()
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
@@ -379,9 +383,9 @@ def create_xception_model(input_shape, mode):
         # for layer in base_model.layers:
         #     layer.trainable = False
         print('\nUnfreezing last Xception layers!')
-        for layer in base_model.layers[:126]:
+        for layer in base_model.layers[:129]:
             layer.trainable = False
-        for layer in base_model.layers[126:]:
+        for layer in base_model.layers[129:]:
             layer.trainable = True
     elif mode == 'tune':
         base_model = Xception(weights=None,
@@ -399,7 +403,7 @@ def create_xception_model(input_shape, mode):
     # net = Dropout(0.5)(net)
     # net = Dense(256, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid',
+    out = Dense(1, activation=None,
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     backbone_model = Model(inputs=base_model.input, outputs=out)
@@ -441,7 +445,7 @@ def create_mobilenet_model(input_shape, mode):
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid',
+    out = Dense(1, activation=None,
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     backbone_model = Model(inputs=base_model.input, outputs=out)
