@@ -267,13 +267,13 @@ def compile_model(model, mode, lr):
 
     thresh = 0.5
     METRICS = [
-        # tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
-        # tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
-        # tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
-        # tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
+        tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
+        tf.keras.metrics.FalsePositives(name='fp', thresholds=thresh),
+        tf.keras.metrics.TrueNegatives(name='tn', thresholds=thresh),
+        tf.keras.metrics.FalseNegatives(name='fn', thresholds=thresh),
         tf.keras.metrics.BinaryAccuracy(name='acc', threshold=thresh),
-        # tf.keras.metrics.Precision(name='precision', thresholds=thresh),
-        # tf.keras.metrics.Recall(name='recall', thresholds=thresh),
+        tf.keras.metrics.Precision(name='precision', thresholds=thresh),
+        tf.keras.metrics.Recall(name='recall', thresholds=thresh),
         tf.keras.metrics.AUC(name='auc'),
         # tf.keras.metrics.BinaryCrossentropy(from_logits=True),
         tf.keras.metrics.BinaryCrossentropy(),

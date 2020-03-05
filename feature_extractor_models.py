@@ -187,54 +187,54 @@ class OneMIL():
         self.model = self.create_model()
 
     def mil_backbone(self, input_shape):
-        # num_filters = 4
-        # X_input = tf.keras.layers.Input(shape=input_shape)
-        # X = tf.keras.layers.Conv2D(filters=num_filters,
-        #                         kernel_size=(7, 7),
-        #                         strides=2,
-        #                         padding='same')(X_input)
-        # X = tf.keras.layers.BatchNormalization()(X)
-        # X = tf.keras.layers.ELU()(X)
-        # X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
-        #                             padding='same')(X)
+        num_filters = 4
+        X_input = tf.keras.layers.Input(shape=input_shape)
+        X = tf.keras.layers.Conv2D(filters=num_filters,
+                                kernel_size=(7, 7),
+                                strides=2,
+                                padding='same')(X_input)
+        X = tf.keras.layers.BatchNormalization()(X)
+        X = tf.keras.layers.ELU()(X)
+        X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
+                                    padding='same')(X)
 
-        # X = residual_unit(X, filter_num=num_filters, stride_num=1)
-        # X = residual_unit(X, filter_num=num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
 
-        # X = residual_unit(X, filter_num=2*num_filters, stride_num=2)
-        # X = residual_unit(X, filter_num=2*num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=1)
 
-        # X = residual_unit(X, filter_num=4*num_filters, stride_num=2)
-        # X = residual_unit(X, filter_num=4*num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=1)
 
-        # X = residual_unit(X, filter_num=8*num_filters, stride_num=2)
-        # X = residual_unit(X, filter_num=8*num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=1)
 
-        # X = tf.keras.layers.GlobalAveragePooling2D()(X)
-        # y = tf.keras.layers.Flatten()(X)
+        X = tf.keras.layers.GlobalAveragePooling2D()(X)
+        y = tf.keras.layers.Flatten()(X)
 
-        x = Input(shape=input_shape)
+        # x = Input(shape=input_shape)
         
-        x1 = InceptionLayer(1, 4, 4, 2)(x)
-        x1 = BatchNormalization()(x1)
-        x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
+        # x1 = InceptionLayer(1, 4, 4, 2)(x)
+        # x1 = BatchNormalization()(x1)
+        # x1 = MaxPooling2D(pool_size=(2, 2), padding='same')(x1)
         
-        x2 = InceptionLayer(2, 4, 4, 2)(x1)
-        x2 = BatchNormalization()(x2)
-        x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
+        # x2 = InceptionLayer(2, 4, 4, 2)(x1)
+        # x2 = BatchNormalization()(x2)
+        # x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
         
-        x3 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x2)
-        x3 = BatchNormalization()(x3)
-        x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
+        # x3 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x2)
+        # x3 = BatchNormalization()(x3)
+        # x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)
         
-        x4 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x3)
-        x4 = BatchNormalization()(x4)
-        x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
+        # x4 = Conv2D(16, (5, 5), padding='same', activation = 'relu')(x3)
+        # x4 = BatchNormalization()(x4)
+        # x4 = MaxPooling2D(pool_size=(4, 4), padding='same')(x4)
         
-        y = Flatten()(x4)
+        # y = Flatten()(x4)
         y = Dropout(0.5)(y)
 
-        return Model(inputs=x, outputs=y)
+        return Model(inputs=X_input, outputs=y)
 
     def create_full_model(self, input_shape):
         num_filters = 4
@@ -361,7 +361,7 @@ class OneMIL():
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
         mil_out = keras_utils.SeqWeightedAttention()(all_mil_outs)
         mil_out = Dropout(0.5)(mil_out)
-        mil_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.05))(mil_out)
+        mil_out = tf.keras.layers.Dense(units=1, activation=None, kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
 
         # full_out = Dropout(0.5)(full_out)
         # full_out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.01))(full_out)

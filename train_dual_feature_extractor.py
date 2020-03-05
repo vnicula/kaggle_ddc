@@ -588,6 +588,7 @@ if __name__ == '__main__':
         'SeqWeightedAttention': SeqWeightedAttention,
         'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
         'sce_loss': sce_loss,
+        'RectifiedAdam': tfa.optimizers.RectifiedAdam,
     }
 
     if args.mode == 'train' or args.mode == 'tune' or args.mode == 'eval':
