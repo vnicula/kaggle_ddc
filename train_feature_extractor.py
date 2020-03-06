@@ -603,8 +603,6 @@ def create_vggface_model(input_shape, mode, weights):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
-    return model
-
 
 def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'mobilenet':
