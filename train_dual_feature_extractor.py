@@ -13,6 +13,7 @@ import time
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
+from keras_vggface.vggface import VGGFace
 
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
@@ -20,6 +21,8 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset, sce_loss, gce_loss
+
+CMDLINE_ARGUMENTS = None
 
 tfkl = tf.keras.layers
 
@@ -54,13 +57,21 @@ def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
 
-    # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-    img = tf.image.convert_image_dtype(img, tf.float32)
-
-    # TODO make sure you take this out for non xception backbones
-    # img = tf.cast(img, tf.float32)
-    # img = tf.keras.applications.xception.preprocess_input(img)
-    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.efficientnet.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'xception':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.xception.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface':
+        img = tf.cast(img, tf.float32)
+        img = tf.image.per_image_standardization(img)
+    else:    
+        # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+        img = tf.image.convert_image_dtype(img, tf.float32)
 
     img_shape = tf.shape(img)
     # assert img_shape[0] == img_shape[1] and img_shape[1] % 2 == 0
@@ -506,9 +517,73 @@ def create_efficientnet_model(input_shape, mode):
     return create_dual_model_with_backbone(input_shape, backbone_model)
 
 
+def create_vggface_model(input_shape, mode):
+
+    vggface_weights = None
+    if 'train' in mode:
+        # vggface_weights = 'pretrained/rcmalli_vggface_tf_notop_vgg16.h5'
+        vggface_weights = 'vggface'
+    print('Loaded vggface weights from: ', vggface_weights)
+    base_model = VGGFace(weights=vggface_weights, input_shape=input_shape,
+                                include_top=False, pooling='avg')
+
+    if 'train' in mode:
+        print('\nUnfreezing last vggface net layers!')
+        for i, layer in enumerate(base_model.layers):
+            if i < 11:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            print(i, layer.name, layer.trainable)
+            # if layer.name == 'pool5':
+            #     output = layer.output
+            #     print('output set to {}.'.format(layer.name))
+
+    # net = base_model.get_layer('pool5')
+    net = base_model.output
+    # net = Dense(1024, activation='relu')(net)
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(backbone_model.layers):
+        print(i, layer.name, layer.trainable)
+
+    return create_dual_model_with_backbone(input_shape, backbone_model)
+
+
 def create_resnet_model(input_shape, mode):
 
     backbone_model = featx.resnet_18(input_shape, num_filters=4)
+
+    return create_dual_model_with_backbone(input_shape, backbone_model)
+
+
+def create_facenet_model(input_shape, mode):
+
+    base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
+    if 'train' in mode:
+        print('\nUnfreezing last facenet net layers!')
+        # Note 423 too few weights, all block8 too many.
+        for i, layer in enumerate(base_model.layers):
+            if i < 420:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            # print(i, layer.name, layer.trainable)
+            if layer.name == 'AvgPool':
+                output = layer.output
+                print('output set to {}.'.format(layer.name))
+
+    net = output
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+    for i, layer in enumerate(backbone_model.layers):
+        print(i, layer.name, layer.trainable)
 
     return create_dual_model_with_backbone(input_shape, backbone_model)
 
@@ -545,6 +620,10 @@ def create_model(model_name, input_shape, mode):
         return create_resnet_model(input_shape, mode)
     if model_name == 'efficientnet':
         return create_efficientnet_model(input_shape, mode)
+    if model_name == 'facenet':
+        return create_facenet_model(input_shape, mode)
+    if model_name == 'vggface':
+        return create_vggface_model(input_shape, mode)
 
     raise ValueError('Unknown model %s' % model_name)
 
@@ -566,7 +645,7 @@ class SavingBackboneCallback(tf.keras.callbacks.Callback):
             self.backbone_model.save_weights(saved_file_name)
 
 
-if __name__ == '__main__':
+def main():
 
     t0 = time.time()
 
@@ -580,7 +659,10 @@ if __name__ == '__main__':
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
+    
     args = parser.parse_args()
+    global CMDLINE_ARGUMENTS
+    CMDLINE_ARGUMENTS = args
 
     num_epochs = 1000
     # validation_steps = 32
@@ -613,6 +695,16 @@ if __name__ == '__main__':
             else:
                 print('\nTraining model from scratch.')
             compile_model(model, args.mode, args.lr)
+    elif args.mode == 'train_single':
+        # due to bugs need to load weights for mirrored strategy - cannot load full model
+        model, backbone_model = create_model(model_name, in_shape, args.mode)
+        if args.load is not None:
+            print('\nLoading weights from: ', args.load)
+            # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+            model.load_weights(args.load)
+        else:
+            print('\nTraining model from scratch.')
+        compile_model(model, args.mode, args.lr)
     elif args.mode == 'explain':
         model, backbone_model = create_model(model_name, in_shape, args.mode)
         if args.load is not None:
@@ -633,7 +725,7 @@ if __name__ == '__main__':
     # fractions, counts = class_fractions(eval_dataset)
     # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
-    if args.mode == 'train' or args.mode == 'tune':
+    if 'train' in args.mode or args.mode == 'tune':
         train_dataset = input_dataset(args.train_dir, is_training=True, batch_size=batch_size,
                                       cache=False,
                                       # cache='/raid/scratch/training_cache.mem'
@@ -721,3 +813,7 @@ if __name__ == '__main__':
     t1 = time.time()
 
     print("Execution took: {}".format(t1-t0))
+
+
+if __name__ == '__main__':
+    main()

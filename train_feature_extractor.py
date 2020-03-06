@@ -14,6 +14,7 @@ import time
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
+from keras_vggface.vggface import VGGFace
 
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
@@ -21,6 +22,8 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset, sce_loss, gce_loss
+
+CMDLINE_ARGUMENTS = None
 
 tfkl = tf.keras.layers
 
@@ -55,13 +58,21 @@ def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
     img = tf.image.decode_png(img, channels=3)
 
-    # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-    img = tf.image.convert_image_dtype(img, tf.float32)
-
-    # TODO make sure you take this out for non xception backbones
-    # img = tf.cast(img, tf.float32)
-    # img = tf.keras.applications.xception.preprocess_input(img)
-    # img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.efficientnet.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'xception':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.xception.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
+        img = tf.cast(img, tf.float32)
+        img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface':
+        img = tf.cast(img, tf.float32)
+        img = tf.image.per_image_standardization(img)
+    else:    
+        # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+        img = tf.image.convert_image_dtype(img, tf.float32)
 
     # img = tf.image.pad_to_bounding_box(img, offset_height=0, offset_width=0,
     #     target_height=constants.MESO_INPUT_HEIGHT, target_width=constants.MESO_INPUT_WIDTH)
@@ -554,9 +565,43 @@ def create_resnet_model(input_shape, mode, weights):
     net = Activation('sigmoid')(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    print(model.summary())
 
-    return model
+def create_vggface_model(input_shape, mode, weights):
+
+    input_tensor = Input(shape=input_shape)
+    # create the base pre-trained model
+    vggface_weights = None
+
+    if weights is None:
+        vggface_weights = 'vggface'
+    print('Loading efficientnet weights from: ', vggface_weights)
+    base_model = VGGFace(weights=vggface_weights, input_shape=input_shape,
+                            include_top=False, pooling='avg')
+
+    net = base_model.output
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+
+    if weights is not None:
+        print('Loading backbone_model weights from: ', weights)
+        backbone_model.load_weights(weights)
+
+    if 'train' in mode:
+        train_layer = 20
+        print('\nUnfreezing vggface net layers starting {}'.format(train_layer))
+        for layer in backbone_model.layers[:train_layer]:
+            layer.trainable = False
+        for layer in backbone_model.layers[train_layer:]:
+            layer.trainable = True
+
+    net = backbone_model.output
+    out = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=out)
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name, layer.trainable)
+    print(model.summary())
 
     return model
 
@@ -576,12 +621,13 @@ def create_model(model_name, input_shape, mode, backbone_weights):
         return create_resnet_model(input_shape, mode, backbone_weights)
     if model_name == 'efficientnet':
         return create_efficientnet_model(input_shape, mode, backbone_weights)
+    if model_name == 'vggface':
+        return create_vggface_model(input_shape, mode, backbone_weights)
 
     raise ValueError('Unknown model %s' % model_name)
 
 
-if __name__ == '__main__':
-
+def main():
     t0 = time.time()
 
     parser = argparse.ArgumentParser()
@@ -594,7 +640,10 @@ if __name__ == '__main__':
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
+
     args = parser.parse_args()
+    global CMDLINE_ARGUMENTS
+    CMDLINE_ARGUMENTS = args
 
     num_epochs = 1000
     # validation_steps = 32
@@ -723,3 +772,7 @@ if __name__ == '__main__':
     t1 = time.time()
 
     print("Execution took: {}".format(t1-t0))
+
+
+if __name__ == '__main__':
+    main()
