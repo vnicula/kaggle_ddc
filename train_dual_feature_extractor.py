@@ -527,14 +527,39 @@ def create_vggface_model(input_shape, mode):
     base_model = VGGFace(weights=vggface_weights, input_shape=input_shape,
                                 include_top=False, pooling='avg')
 
+    """
+        0 input_1 False
+        1 conv1_1 False
+        2 conv1_2 False
+        3 pool1 False
+        4 conv2_1 False
+        5 conv2_2 False
+        6 pool2 False
+        7 conv3_1 False
+        8 conv3_2 False
+        9 conv3_3 False
+        10 pool3 False
+        11 conv4_1 False
+        12 conv4_2 False
+        13 conv4_3 False
+        14 pool4 False
+        15 conv5_1 False
+        16 conv5_2 False
+        17 conv5_3 False
+        18 pool5 False
+        19 global_average_pooling2d False
+        20 dropout True
+        21 dense True
+    """
     if 'train' in mode:
         print('\nUnfreezing last vggface net layers!')
         for i, layer in enumerate(base_model.layers):
-            if i < 11:
+            # Note Global pooling is 19
+            if i < 15:
                 layer.trainable = False
             else:
                 layer.trainable = True
-            print(i, layer.name, layer.trainable)
+            # print(i, layer.name, layer.trainable)
             # if layer.name == 'pool5':
             #     output = layer.output
             #     print('output set to {}.'.format(layer.name))
