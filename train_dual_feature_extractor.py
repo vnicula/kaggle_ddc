@@ -290,9 +290,9 @@ def compile_model(model, mode, lr):
 
     if mode == 'train':
         # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
-        optimizer = tfa.optimizers.RectifiedAdam(lr)
+        # optimizer = tfa.optimizers.RectifiedAdam(lr)
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
@@ -567,7 +567,7 @@ def create_facenet_model(input_shape, mode):
         print('\nUnfreezing last facenet net layers!')
         # Note 423 too few weights, all block8 too many.
         for i, layer in enumerate(base_model.layers):
-            if i < 420:
+            if i < 407:
                 layer.trainable = False
             else:
                 layer.trainable = True

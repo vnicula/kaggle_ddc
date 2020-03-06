@@ -564,11 +564,13 @@ def create_resnet_model(input_shape, mode, weights):
     net = backbone_model.output
     net = Activation('sigmoid')(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    print(model.summary())
+    
+    return model
 
 
 def create_vggface_model(input_shape, mode, weights):
 
-    input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
     vggface_weights = None
 
@@ -603,6 +605,48 @@ def create_vggface_model(input_shape, mode, weights):
         print(i, layer.name, layer.trainable)
     print(model.summary())
 
+    return model
+
+
+def create_facenet_model(input_shape, mode, weights):
+
+    base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
+    for i, layer in enumerate(base_model.layers):
+        if layer.name == 'AvgPool':
+            output = layer.output
+            print('output set to {}.'.format(layer.name))
+            break
+    
+    net = output
+    net = Dropout(0.5)(net)
+    net = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    backbone_model = Model(inputs=base_model.input, outputs=net)
+
+    if weights is not None:
+        print('Loading backbone_model weights from: ', weights)
+        backbone_model.load_weights(weights)
+
+    if 'train' in mode:
+        print('\nUnfreezing last facenet net layers!')
+        # Note 423 too few weights, all block8 too many.
+        for i, layer in enumerate(base_model.layers):
+            if i < 423:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            # print(i, layer.name, layer.trainable)
+
+    net = backbone_model.output
+    out = Activation('sigmoid')(net)
+    model = Model(inputs=backbone_model.input, outputs=out)
+
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name, layer.trainable)
+    print(model.summary())
+
+    return model
+
 
 def create_model(model_name, input_shape, mode, backbone_weights):
     if model_name == 'mobilenet':
@@ -621,6 +665,8 @@ def create_model(model_name, input_shape, mode, backbone_weights):
         return create_efficientnet_model(input_shape, mode, backbone_weights)
     if model_name == 'vggface':
         return create_vggface_model(input_shape, mode, backbone_weights)
+    if model_name == 'facenet':
+        return create_facenet_model(input_shape, mode, backbone_weights)
 
     raise ValueError('Unknown model %s' % model_name)
 
