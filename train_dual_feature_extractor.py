@@ -572,6 +572,7 @@ def create_vggface_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
 
     backbone_model = Model(inputs=base_model.input, outputs=out)
+
     for i, layer in enumerate(backbone_model.layers):
         print(i, layer.name, layer.trainable)
 
@@ -588,11 +589,12 @@ def create_resnet_model(input_shape, mode):
 def create_facenet_model(input_shape, mode):
 
     base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
+
     if 'train' in mode:
         print('\nUnfreezing last facenet net layers!')
         # Note 423 too few weights, all block8 too many.
         for i, layer in enumerate(base_model.layers):
-            if i < 407:
+            if i < 423:
                 layer.trainable = False
             else:
                 layer.trainable = True

@@ -610,6 +610,7 @@ def create_vggface_model(input_shape, mode, weights):
 
 def create_facenet_model(input_shape, mode, weights):
 
+    input_tensor = Input(shape=input_shape)
     base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
     for i, layer in enumerate(base_model.layers):
         if layer.name == 'AvgPool':
@@ -637,9 +638,14 @@ def create_facenet_model(input_shape, mode, weights):
                 layer.trainable = True
             # print(i, layer.name, layer.trainable)
 
-    net = backbone_model.output
+    # This is needed so I can change the input shape
+    # backbone_model.input expects a different shape, i.e.
+    # cannot do 
+    # net = backbone_model.output
+    # model = Model(inputs=backbone_model.input, outputs=out)
+    net = backbone_model(input_tensor)
     out = Activation('sigmoid')(net)
-    model = Model(inputs=backbone_model.input, outputs=out)
+    model = Model(inputs=input_tensor, outputs=out)
 
     for i, layer in enumerate(model.layers):
         print(i, layer.name, layer.trainable)
