@@ -59,7 +59,7 @@ def decode_img(img):
 
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
         img = tf.cast(img, tf.float32)
-        img = tf.keras.applications.efficientnet.preprocess_input(img)
+        # img = tf.keras.applications.efficientnet.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
