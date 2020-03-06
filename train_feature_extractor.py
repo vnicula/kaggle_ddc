@@ -690,12 +690,13 @@ def main():
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
-
+    parser.add_argument('--epochs', type=int, default=500)
+    
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
     CMDLINE_ARGUMENTS = args
 
-    num_epochs = 1000
+    num_epochs = args.epochs
     # validation_steps = 32
     batch_size = int(args.batch_size)
     model_name = args.model_name

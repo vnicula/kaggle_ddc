@@ -288,22 +288,6 @@ def fraction_positives(y_true, y_pred):
 
 def compile_model(model, mode, lr):
 
-    if mode == 'train':
-        # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
-        # optimizer = tfa.optimizers.RectifiedAdam(lr)
-        # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
-    elif mode == 'tune':
-        # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
-        # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
-    else:
-        optimizer = tf.keras.optimizers.SGD(lr)
-
-    # learning_rate=CustomSchedule(D_MODEL)
-    # optimizer = tf.keras.optimizers.Adam(
-    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
-
     thresh = 0.5
     METRICS = [
         # tf.keras.metrics.TruePositives(name='tp', thresholds=thresh),
@@ -321,20 +305,41 @@ def compile_model(model, mode, lr):
         tf.keras.metrics.CategoricalAccuracy(name='acc'),
         tf.keras.losses.categorical_crossentropy,
     ]
+    if mode == 'train' or mode == 'tune':
+        METRICS.append(fraction_positives)
+    
+    optimizer = tf.keras.optimizers.SGD(lr)
+    if mode == 'train':
+        if CMDLINE_ARGUMENTS.model_name == 'vggface':
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        else:
+            # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+            optimizer = tfa.optimizers.RectifiedAdam(lr)
+            # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)        
+    elif mode == 'tune':
+        # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
+        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+
+    # learning_rate=CustomSchedule(D_MODEL)
+    # optimizer = tf.keras.optimizers.Adam(
+    #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
     )
-    # my_loss = tf.keras.losses.CategoricalCrossentropy(
-    #     label_smoothing=0.025
-    # )
     if mode == 'train' or mode == 'tune':
-        METRICS.append(fraction_positives)
-        # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
-        # my_loss = binary_focal_loss(alpha=0.5)
-        # my_loss = sce_loss,
-        # my_loss = 'mean_squared_error'
-        # my_loss = tf.keras.losses.MeanSquaredError()
+        if CMDLINE_ARGUMENTS.model_name == 'vggface':
+            my_loss = tf.keras.losses.CategoricalCrossentropy(
+                label_smoothing=0.025
+            )
+        else:
+            # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+            # my_loss = binary_focal_loss(alpha=0.5)
+            # my_loss = sce_loss,
+            # my_loss = 'mean_squared_error'
+            # my_loss = tf.keras.losses.MeanSquaredError()
+            pass
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -528,16 +533,7 @@ def create_vggface_model(input_shape, mode):
                                 include_top=False, pooling='avg')
 
     """
-        0 input_1 False
-        1 conv1_1 False
-        2 conv1_2 False
-        3 pool1 False
-        4 conv2_1 False
-        5 conv2_2 False
-        6 pool2 False
-        7 conv3_1 False
-        8 conv3_2 False
-        9 conv3_3 False
+        ...
         10 pool3 False
         11 conv4_1 False
         12 conv4_2 False
@@ -551,11 +547,12 @@ def create_vggface_model(input_shape, mode):
         20 dropout True
         21 dense True
     """
-    if 'train' in mode:
-        print('\nUnfreezing last vggface net layers!')
+    if 'train' in mode or 'tune' in mode:
+        # Note Global pooling is 19
+        N = 20 if mode == 'train' else 15
+        print('\nUnfreezing last %d vggface net layers!' % N)
         for i, layer in enumerate(base_model.layers):
-            # Note Global pooling is 19
-            if i < 15:
+            if i < N:
                 layer.trainable = False
             else:
                 layer.trainable = True
@@ -590,11 +587,12 @@ def create_facenet_model(input_shape, mode):
 
     base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
 
-    if 'train' in mode:
-        print('\nUnfreezing last facenet net layers!')
+    if 'train' in mode or 'tune' in mode:
         # Note 423 too few weights, all block8 too many.
+        N = 423 if mode == 'train' else 420
+        print('\nUnfreezing last %d facenet net layers!' % N)
         for i, layer in enumerate(base_model.layers):
-            if i < 423:
+            if i < N:
                 layer.trainable = False
             else:
                 layer.trainable = True
@@ -623,8 +621,8 @@ def create_dual_model_with_backbone(input_shape, backbone_model):
     net_right = backbone_model(input_right)
 
     net = tf.keras.layers.concatenate([net_left, net_right])
-    # net = tf.keras.layers.Softmax()(net)
-    net = Activation('sigmoid')(net)
+    net = tf.keras.layers.Softmax()(net)
+    # net = Activation('sigmoid')(net)
 
     model = Model(inputs=[input_left, input_right], outputs=net)
     print(model.summary())
@@ -686,12 +684,13 @@ def main():
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--epochs', type=int, default=500)
     
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
     CMDLINE_ARGUMENTS = args
 
-    num_epochs = 1000
+    num_epochs = args.epochs
     # validation_steps = 32
     batch_size = int(args.batch_size)
     model_name = args.model_name
@@ -765,11 +764,11 @@ def main():
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(output_dir, 'dual_featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode)),
+                filepath=os.path.join(output_dir, 'dual_featx_weights_%s_{epoch}.tf' % (model_name + '_' + args.mode)),
                 save_best_only=True,
-                monitor='val_categorical_crossentropy',
+                monitor='val_loss',
                 mode='min',
-                # save_format='tf',
+                save_format='tf',
                 save_weights_only=True,
                 verbose=1),
             tf.keras.callbacks.EarlyStopping(
@@ -823,12 +822,15 @@ def main():
 
     if args.save == 'True':
         model_file_name = args.mode + '_dual_featx_full_%s_model.h5' % model_name
+        model_weights_file_name = args.mode + '_dual_featx_full_%s_model_weights.h5' % model_name
         backbone_model_file_name = args.mode + '_backbone_dual_featx_%s_model.h5' % model_name
         backbone_model_weights_file_name = args.mode + '_backbone_dual_featx_%s_model_weights.h5' % model_name
         if args.load is not None:
             model_file_name = os.path.basename(args.load) + '_' + model_file_name
+            model_weights_file_name = os.path.basename(args.load) + '_' + model_weights_file_name
             backbone_model_file_name = os.path.basename(args.load) + '_' + backbone_model_file_name
             backbone_model_weights_file_name = os.path.basename(args.load) + '_' + backbone_model_weights_file_name
+        model.save_weights(os.path.join(output_dir, model_weights_file_name))
         model.save(os.path.join(output_dir, model_file_name))
         backbone_model.save_weights(os.path.join(output_dir, backbone_model_weights_file_name))
         backbone_model.save(os.path.join(output_dir, backbone_model_file_name))
