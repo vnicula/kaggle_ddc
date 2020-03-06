@@ -132,9 +132,9 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(jitter_choice < 0.5, lambda: x, lambda: random_jitter(x))
 
-    # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-    #     x, min_jpeg_quality=40, max_jpeg_quality=90))
+    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
+        x, min_jpeg_quality=40, max_jpeg_quality=90))
 
     return (x, y)
 
@@ -263,9 +263,9 @@ def compile_model(model, mode, lr):
 
     if mode == 'train':
         # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
-        optimizer = tfa.optimizers.RectifiedAdam(lr)
+        # optimizer = tfa.optimizers.RectifiedAdam(lr)
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
