@@ -134,7 +134,7 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
 
     # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-    #     x, min_jpeg_quality=80, max_jpeg_quality=100))
+    #     x, min_jpeg_quality=40, max_jpeg_quality=90))
 
     return (x, y)
 
@@ -574,7 +574,7 @@ def create_vggface_model(input_shape, mode, weights):
 
     if weights is None:
         vggface_weights = 'vggface'
-    print('Loading efficientnet weights from: ', vggface_weights)
+    print('Loading vggface weights from: ', vggface_weights)
     base_model = VGGFace(weights=vggface_weights, input_shape=input_shape,
                             include_top=False, pooling='avg')
 
