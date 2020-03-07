@@ -66,7 +66,7 @@ def decode_img(img):
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-    elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface':
+    elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'resface':
         img = tf.cast(img, tf.float32)
         img = tf.image.per_image_standardization(img)
     else:    
@@ -153,13 +153,13 @@ def image_augment(x: (tf.Tensor, tf.Tensor), y: tf.Tensor) -> ((tf.Tensor, tf.Te
     jitter_choice1 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x1 = tf.cond(jitter_choice1 < 0.75, lambda: x1, lambda: random_jitter(x1))
 
-    rotate_choice0 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x0 = tf.cond(rotate_choice0 < 0.75, lambda: x0, lambda: tf.py_function(random_rotate, [x0], tf.float32))
-    x0 = tf.reshape(x0, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    # rotate_choice0 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x0 = tf.cond(rotate_choice0 < 0.75, lambda: x0, lambda: tf.py_function(random_rotate, [x0], tf.float32))
+    # x0 = tf.reshape(x0, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
     
-    rotate_choice1 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x1 = tf.cond(rotate_choice1 < 0.75, lambda: x1, lambda: tf.py_function(random_rotate, [x1], tf.float32))
-    x1 = tf.reshape(x1, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    # rotate_choice1 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x1 = tf.cond(rotate_choice1 < 0.75, lambda: x1, lambda: tf.py_function(random_rotate, [x1], tf.float32))
+    # x1 = tf.reshape(x1, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
     jpeg_choice0 = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x0 = tf.cond(jpeg_choice0 < 0.75, lambda: x0, lambda: tf.image.random_jpeg_quality(
@@ -536,9 +536,8 @@ def create_vggface_model(input_shape, mode):
         # vggface_weights = 'pretrained/rcmalli_vggface_tf_notop_vgg16.h5'
         vggface_weights = 'vggface'
     print('Loaded vggface weights from: ', vggface_weights)
-    base_model = VGGFace(weights=vggface_weights, input_shape=input_shape,
-                                include_top=False, pooling='avg')
-
+    base_model = VGGFace(model='vgg16', weights=vggface_weights,
+        input_shape=input_shape, include_top=False, pooling='avg')
     """
         ...
         10 pool3 False
@@ -573,6 +572,44 @@ def create_vggface_model(input_shape, mode):
     # net = base_model.get_layer('pool5')
     net = base_model.output
     # net = Dense(1024, activation='relu')(net)
+    net = Dropout(0.5)(net)
+    out = Dense(1, activation=None,
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+
+    backbone_model = Model(inputs=base_model.input, outputs=out)
+
+    for i, layer in enumerate(backbone_model.layers):
+        print(i, layer.name, layer.trainable)
+
+    return create_dual_model_with_backbone(input_shape, backbone_model)
+
+
+def create_resface_model(input_shape, mode):
+
+    vggface_weights = None
+    if 'train' in mode:
+        # vggface_weights = 'pretrained/rcmalli_vggface_tf_notop_vgg16.h5'
+        vggface_weights = 'vggface'
+    print('Loaded vggface weights from: ', vggface_weights)
+    base_model = VGGFace(model='resnet50', weights=vggface_weights,
+        input_shape=input_shape, include_top=False, pooling='avg')
+
+    if 'train' in mode or 'tune' in mode:
+        N = 200 if mode == 'train' else 150
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('\nUnfreezing last %d resface net layers!' % N)
+        for i, layer in enumerate(base_model.layers):
+            if i < N:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            # print(i, layer.name, layer.trainable)
+            # if layer.name == 'pool5':
+            #     output = layer.output
+            #     print('output set to {}.'.format(layer.name))
+
+    net = base_model.output
     net = Dropout(0.5)(net)
     out = Dense(1, activation=None,
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
@@ -696,6 +733,8 @@ def create_model(model_name, input_shape, mode):
         return create_facenet_model(input_shape, mode)
     if model_name == 'vggface':
         return create_vggface_model(input_shape, mode)
+    if model_name == 'resface':
+        return create_resface_model(input_shape, mode)
 
     raise ValueError('Unknown model %s' % model_name)
 
