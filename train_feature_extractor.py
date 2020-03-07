@@ -270,7 +270,7 @@ def compile_model(model, mode, lr):
             # optimizer = tfa.optimizers.RectifiedAdam(lr)
             # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
             tfa.optimizers.Lookahead(
-                optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+                optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
