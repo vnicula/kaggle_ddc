@@ -310,7 +310,7 @@ def compile_model(model, mode, lr):
     
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'vggface':
+        if CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
             optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
         else:
             # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
@@ -329,7 +329,7 @@ def compile_model(model, mode, lr):
         label_smoothing=0.025
     )
     if mode == 'train' or mode == 'tune':
-        if CMDLINE_ARGUMENTS.model_name == 'vggface':
+        if CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
             my_loss = tf.keras.losses.CategoricalCrossentropy(
                 label_smoothing=0.025
             )
