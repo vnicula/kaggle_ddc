@@ -325,7 +325,8 @@ def compile_model(model, mode, lr):
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
         # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
-        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
 
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
@@ -336,15 +337,15 @@ def compile_model(model, mode, lr):
     )
     if mode == 'train' or mode == 'tune':
         if CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
-            my_loss = tf.keras.losses.CategoricalCrossentropy(
-                label_smoothing=0.025
-            )
+            # my_loss = tf.keras.losses.CategoricalCrossentropy(
+            #     label_smoothing=0.025
+            # )
+            pass
         else:
             # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
             # my_loss = binary_focal_loss(alpha=0.5)
             # my_loss = sce_loss,
             # my_loss = 'mean_squared_error'
-            # my_loss = tf.keras.losses.MeanSquaredError()
             pass
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
@@ -667,8 +668,8 @@ def create_dual_model_with_backbone(input_shape, backbone_model):
     net_right = backbone_model(input_right)
 
     net = tf.keras.layers.concatenate([net_left, net_right])
-    net = tf.keras.layers.Softmax()(net)
-    # net = Activation('sigmoid')(net)
+    # net = tf.keras.layers.Softmax()(net)
+    net = Activation('sigmoid')(net)
 
     model = Model(inputs=[input_left, input_right], outputs=net)
     print(model.summary())

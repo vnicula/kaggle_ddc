@@ -262,14 +262,17 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+        if CMDLINE_ARGUMENTS.model_name == 'meso5':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
         # optimizer = tfa.optimizers.RectifiedAdam(lr)
         # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        else:
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
-        optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
+        # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-6)
         # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
     else:
         optimizer = tf.keras.optimizers.SGD(lr)
 
@@ -365,9 +368,12 @@ def create_meso5_model(input_shape, mode, weights):
         backbone_model.load_weights(weights)
 
     if mode == 'train':
-        print('\nFreezing all conv Meso5 layers!')
+        N = 37
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('Freezing first %d conv Meso5 layers!' % N)
         for i, layer in enumerate(backbone_model.layers):
-            if i < 39:
+            if i < N:
                 layer.trainable = False
             print(i, layer.name, layer.trainable)
 
@@ -691,7 +697,8 @@ def main():
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--epochs', type=int, default=500)
-    
+    parser.add_argument('--frozen', type=int, default=-1)
+
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
     CMDLINE_ARGUMENTS = args
