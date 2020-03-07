@@ -550,6 +550,8 @@ def create_vggface_model(input_shape, mode):
     if 'train' in mode or 'tune' in mode:
         # Note Global pooling is 19
         N = 20 if mode == 'train' else 15
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
         print('\nUnfreezing last %d vggface net layers!' % N)
         for i, layer in enumerate(base_model.layers):
             if i < N:
@@ -626,6 +628,8 @@ def create_facenet_model(input_shape, mode):
     if 'train' in mode or 'tune' in mode:
         # Note 423 too few weights, all block8 too many.
         N = 423 if mode == 'train' else 420
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
         print('\nUnfreezing last %d facenet net layers!' % N)
         for i, layer in enumerate(base_model.layers):
             if i < N:
@@ -721,6 +725,7 @@ def main():
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--epochs', type=int, default=500)
+    parser.add_argument('--frozen', type=int, default=-1)
     
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
