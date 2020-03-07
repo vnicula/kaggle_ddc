@@ -315,9 +315,11 @@ def compile_model(model, mode, lr):
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
         if CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
-            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
-        elif CMDLINE_ARGUMENTS.model_name == 'meso5':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+            # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        elif CMDLINE_ARGUMENTS.model_name == 'meso5':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
+            # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         else:
             # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
             optimizer = tfa.optimizers.RectifiedAdam(lr)
