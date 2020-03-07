@@ -715,6 +715,8 @@ def main():
     batch_size = int(args.batch_size)
     model_name = args.model_name
     output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
+
     in_shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3)
 
     custom_objs = {
