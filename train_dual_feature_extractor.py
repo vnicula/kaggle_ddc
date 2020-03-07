@@ -725,7 +725,7 @@ def main():
     parser.add_argument('--mode', type=str)
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
-    parser.add_argument('--output_dir', type=str, default='temp')
+    parser.add_argument('--output_dir', type=str, default='temp_dual')
     parser.add_argument('--model_name', type=str, default='unknown')
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')

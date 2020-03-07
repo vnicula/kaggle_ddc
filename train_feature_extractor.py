@@ -636,10 +636,13 @@ def create_facenet_model(input_shape, mode, weights):
         backbone_model.load_weights(weights)
 
     if 'train' in mode:
-        print('\nUnfreezing last facenet net layers!')
         # Note 423 too few weights, all block8 too many.
+        N = 423
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('Freezing first %d conv facenet layers!' % N)
         for i, layer in enumerate(base_model.layers):
-            if i < 423:
+            if i < N:
                 layer.trainable = False
             else:
                 layer.trainable = True
@@ -691,6 +694,7 @@ def main():
     parser.add_argument('--mode', type=str)
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--output_dir', type=str, default='temp_feat')
     parser.add_argument('--model_name', type=str, default='unknown')
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--backbone_weights', type=str, default=None)
@@ -708,6 +712,7 @@ def main():
     # validation_steps = 32
     batch_size = int(args.batch_size)
     model_name = args.model_name
+    output_dir = args.output_dir
     in_shape = (constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3)
 
     custom_objs = {
@@ -764,11 +769,11 @@ def main():
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='featx_weights_%s_{epoch}.h5' % (model_name + '_' + args.mode),
+                filepath=os.path.join(output_dir, 'featx_weights_%s_{epoch}.tf' % (model_name + '_' + args.mode)),
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 mode='min',
-                # save_format='tf',
+                save_format='tf',
                 save_weights_only=True,
                 verbose=1),
             tf.keras.callbacks.EarlyStopping(
@@ -780,7 +785,7 @@ def main():
                 mode='min',
                 verbose=1),
             tf.keras.callbacks.CSVLogger(
-                'training_featx_%s_log.csv' % model_name),
+                os.path.join(output_dir, 'training_featx_%s_log.csv' % model_name)),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
@@ -813,7 +818,7 @@ def main():
                             callbacks=callbacks)
 
         # lr_callback.plot_schedule()
-        save_loss(history, 'final_featx_%s_model' % model_name)
+        save_loss(history, os.path.join(output_dir, 'final_featx_%s_model' % model_name))
 
     elif args.mode == 'eval':
         model.evaluate(eval_dataset)
@@ -822,10 +827,10 @@ def main():
         model_file_name = args.mode + '_featx_full_%s_model.h5' % model_name
         if args.load is not None:
             model_file_name = args.load + '_' + model_file_name
-        model.save(model_file_name)
+        model.save(os.path.join(output_dir, model_file_name))
 
         new_model = tf.keras.models.load_model(
-            model_file_name, custom_objects=custom_objs)
+            os.path.join(output_dir, model_file_name), custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()
