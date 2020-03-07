@@ -586,6 +586,42 @@ def create_resnet_model(input_shape, mode):
 def create_facenet_model(input_shape, mode):
 
     base_model = tf.keras.models.load_model('pretrained/facenet_keras.h5')
+    """
+        391 Block8_5_Branch_1_Conv2d_0a_1x1 False
+        392 Block8_5_Branch_1_Conv2d_0a_1x1_BatchNorm False
+        393 Block8_5_Branch_1_Conv2d_0a_1x1_Activation False
+        394 Block8_5_Branch_1_Conv2d_0b_1x3 False
+        395 Block8_5_Branch_1_Conv2d_0b_1x3_BatchNorm False
+        396 Block8_5_Branch_1_Conv2d_0b_1x3_Activation False
+        397 Block8_5_Branch_0_Conv2d_1x1 False
+        398 Block8_5_Branch_1_Conv2d_0c_3x1 False
+        399 Block8_5_Branch_0_Conv2d_1x1_BatchNorm False
+        400 Block8_5_Branch_1_Conv2d_0c_3x1_BatchNorm False
+        401 Block8_5_Branch_0_Conv2d_1x1_Activation False
+        402 Block8_5_Branch_1_Conv2d_0c_3x1_Activation False
+        403 Block8_5_Concatenate False
+        404 Block8_5_Conv2d_1x1 False
+        405 Block8_5_ScaleSum False
+        406 Block8_5_Activation False
+        407 Block8_6_Branch_1_Conv2d_0a_1x1 False
+        408 Block8_6_Branch_1_Conv2d_0a_1x1_BatchNorm False
+        409 Block8_6_Branch_1_Conv2d_0a_1x1_Activation False
+        410 Block8_6_Branch_1_Conv2d_0b_1x3 False
+        411 Block8_6_Branch_1_Conv2d_0b_1x3_BatchNorm False
+        412 Block8_6_Branch_1_Conv2d_0b_1x3_Activation False
+        413 Block8_6_Branch_0_Conv2d_1x1 False
+        414 Block8_6_Branch_1_Conv2d_0c_3x1 False
+        415 Block8_6_Branch_0_Conv2d_1x1_BatchNorm False
+        416 Block8_6_Branch_1_Conv2d_0c_3x1_BatchNorm False
+        417 Block8_6_Branch_0_Conv2d_1x1_Activation False
+        418 Block8_6_Branch_1_Conv2d_0c_3x1_Activation False
+        419 Block8_6_Concatenate False
+        420 Block8_6_Conv2d_1x1 False
+        421 Block8_6_ScaleSum False
+        422 AvgPool False
+        423 dropout True
+        424 dense True
+    """
 
     if 'train' in mode or 'tune' in mode:
         # Note 423 too few weights, all block8 too many.
