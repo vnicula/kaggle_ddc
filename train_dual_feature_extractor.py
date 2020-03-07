@@ -337,16 +337,14 @@ def compile_model(model, mode, lr):
     )
     if mode == 'train' or mode == 'tune':
         if CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
+            my_loss = sce_loss,
             # my_loss = tf.keras.losses.CategoricalCrossentropy(
             #     label_smoothing=0.025
             # )
-            pass
         else:
             # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
             # my_loss = binary_focal_loss(alpha=0.5)
-            # my_loss = sce_loss,
-            # my_loss = 'mean_squared_error'
-            pass
+            my_loss = 'mean_squared_error'
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
