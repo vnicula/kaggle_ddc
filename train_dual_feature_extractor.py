@@ -322,8 +322,8 @@ def compile_model(model, mode, lr):
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         else:
-            # optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
-            optimizer = tfa.optimizers.RectifiedAdam(lr)
+            optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
+            # optimizer = tfa.optimizers.RectifiedAdam(lr)
             # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)        
     elif mode == 'tune':
         # optimizer = tf.keras.optimizers.Adam()  # (lr=0.025)
@@ -345,7 +345,7 @@ def compile_model(model, mode, lr):
             #     label_smoothing=0.025
             # )
             pass
-        elif 'meso' in CMDLINE_ARGUMENTS.model_name:
+        elif 'meso' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'resnet':
             pass
         else:
             # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
