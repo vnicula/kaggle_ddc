@@ -11,6 +11,7 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
+import efficientnet.tfkeras
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
@@ -59,8 +60,8 @@ def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
 
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
-        img = tf.cast(img, tf.float32)
-        # img = tf.keras.applications.efficientnet.preprocess_input(img)
+        img = tf.cast(img, tf.float32) # needed, they do simple division
+        img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
@@ -266,12 +267,12 @@ def compile_model(model, mode, lr):
             optimizer = tfa.optimizers.Lookahead(
                 tf.keras.optimizers.SGD(lr, momentum=0.9))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
-        elif CMDLINE_ARGUMENTS.model_name == 'facenet':
+        elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'efficientnet':
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
         else:
             # optimizer = tfa.optimizers.RectifiedAdam(lr)
             # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
-            tfa.optimizers.Lookahead(
+            optimizer = tfa.optimizers.Lookahead(
                 optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
             # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
     elif mode == 'tune':
@@ -528,11 +529,13 @@ def create_efficientnet_model(input_shape, mode, weights):
         backbone_model.load_weights(weights)
 
     if mode == 'train':
-        train_layer = 334 if weights is not None else 329
-        print('\nUnfreezing efficient net layers starting {}'.format(train_layer))
-        for layer in backbone_model.layers[:train_layer]:
+        N = 334
+        if CMDLINE_ARGUMENTS.frozen >= 0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('\nUnfreezing efficient net layers starting {}'.format(N))
+        for layer in backbone_model.layers[:N]:
             layer.trainable = False
-        for layer in backbone_model.layers[train_layer:]:
+        for layer in backbone_model.layers[N:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')

@@ -492,14 +492,14 @@ def create_efficientnet_model(input_shape, mode):
     # create the base pre-trained model
     efficientnet_weights = None
     if mode == 'train':
-        efficientnet_weights = 'pretrained/efficientnet-b2_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        efficientnet_weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         # efficientnet_weights = 'imagenet'
     print('Loaded efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB2(weights=efficientnet_weights, input_shape=input_shape,
+    base_model = EfficientNetB1(weights=efficientnet_weights, input_shape=input_shape,
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
-        N = 20 if mode == 'train' else 15
+        N = 329 if mode == 'train' else 301
         if CMDLINE_ARGUMENTS.frozen >=0:
             N = CMDLINE_ARGUMENTS.frozen
         print('\nUnfreezing last %d efficientnet layers!' % N)
