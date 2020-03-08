@@ -128,9 +128,9 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(jitter_choice < 0.75, lambda: x, lambda: random_jitter(x))
 
-    rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
-    x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    # x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
+    # x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
     jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
