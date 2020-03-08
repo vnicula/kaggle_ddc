@@ -60,7 +60,7 @@ def decode_img(img):
 
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
         img = tf.cast(img, tf.float32)
-        img = tf.keras.applications.efficientnet.preprocess_input(img)
+        # img = tf.keras.applications.efficientnet.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
@@ -267,7 +267,7 @@ def compile_model(model, mode, lr):
                 tf.keras.optimizers.SGD(lr, momentum=0.9))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
         elif CMDLINE_ARGUMENTS.model_name == 'facenet':
-            tf.keras.optimizers.SGD(lr, momentum=0.9)
+            optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
         else:
             # optimizer = tfa.optimizers.RectifiedAdam(lr)
             # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)

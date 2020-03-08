@@ -77,15 +77,15 @@ class MesoInception5():
         x2 = BatchNormalization()(x2)
         x2 = MaxPooling2D(pool_size=(2, 2), padding='same')(x2)        
         
-        x3 = InceptionLayer(4*self.width, 4*self.width, 4*self.width, 4*self.width)(x2)
+        x3 = InceptionLayer(8*self.width, 8*self.width, 8*self.width, 8*self.width)(x2)
         x3 = BatchNormalization()(x3)
         x3 = MaxPooling2D(pool_size=(2, 2), padding='same')(x3)        
 
-        x4 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x3)
+        x4 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x3)
         x4 = BatchNormalization()(x4)
         x4 = MaxPooling2D(pool_size=(2, 2), padding='same')(x4)        
 
-        x5 = Conv2D(32*self.width, (5, 5), padding='same', activation = 'relu')(x4)
+        x5 = Conv2D(64*self.width, (5, 5), padding='same', activation = 'relu')(x4)
         x5 = BatchNormalization()(x5)
         x5 = MaxPooling2D(pool_size=(4, 4), padding='same')(x5)
         
