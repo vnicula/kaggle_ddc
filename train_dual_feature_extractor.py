@@ -10,6 +10,7 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
+import efficientnet.tfkeras
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
@@ -58,13 +59,13 @@ def decode_img(img):
     img = tf.image.decode_png(img, channels=3)
 
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
-        img = tf.cast(img, tf.float32)
-        # img = tf.keras.applications.efficientnet.preprocess_input(img)
+        img = tf.cast(img, tf.float32) # needed, they do simple division
+        img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
-        img = tf.cast(img, tf.float32)
+        # img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
-        img = tf.cast(img, tf.float32)
+        # img = tf.cast(img, tf.float32)
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'resface':
         img = tf.cast(img, tf.float32)
@@ -318,6 +319,8 @@ def compile_model(model, mode, lr):
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
             # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
             # optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        elif CMDLINE_ARGUMENTS.model_name == 'efficientnet':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         elif CMDLINE_ARGUMENTS.model_name == 'meso5':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
@@ -350,7 +353,8 @@ def compile_model(model, mode, lr):
         else:
             # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
             # my_loss = binary_focal_loss(alpha=0.5)
-            my_loss = 'mean_squared_error'
+            # my_loss = 'mean_squared_error'
+            pass
     
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -495,14 +499,14 @@ def create_efficientnet_model(input_shape, mode):
                                 include_top=False, pooling='avg')
 
     if mode == 'train':
-        print('\nFreezing all EfficientNet layers!')
-        # for layer in base_model.layers:
-        #     layer.trainable = False
-        print('\nUnfreezing last efficient net layers!')
+        N = 20 if mode == 'train' else 15
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('\nUnfreezing last %d efficientnet layers!' % N)
         # NOTE EffnetB1 and B2 both have top layer at 329
-        for layer in base_model.layers[:329]:
+        for layer in base_model.layers[:N]:
             layer.trainable = False
-        for layer in base_model.layers[329:]:
+        for layer in base_model.layers[N:]:
             layer.trainable = True
     elif mode == 'tune':
         print('\nUnfreezing last k something EfficientNet layers!')

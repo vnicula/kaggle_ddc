@@ -836,7 +836,7 @@ def main():
     if args.save == 'True':
         model_file_name = args.mode + '_featx_full_%s_model.h5' % model_name
         if args.load is not None:
-            model_file_name = args.load + '_' + model_file_name
+            model_file_name = os.path.basename(args.load) + '_' + model_file_name
         model.save(os.path.join(output_dir, model_file_name))
 
         new_model = tf.keras.models.load_model(
