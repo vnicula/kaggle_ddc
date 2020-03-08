@@ -262,10 +262,12 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'meso5' or CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'facenet':
+        if CMDLINE_ARGUMENTS.model_name == 'meso5' or CMDLINE_ARGUMENTS.model_name == 'vggface':
             optimizer = tfa.optimizers.Lookahead(
                 tf.keras.optimizers.SGD(lr, momentum=0.9))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
+        elif CMDLINE_ARGUMENTS.model_name == 'facenet':
+            tf.keras.optimizers.SGD(lr, momentum=0.9)
         else:
             # optimizer = tfa.optimizers.RectifiedAdam(lr)
             # optimizer = tf.keras.optimizers.Adam(lr)  # (lr=0.025)
