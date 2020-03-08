@@ -262,7 +262,7 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'meso5':
+        if CMDLINE_ARGUMENTS.model_name == 'meso5' or CMDLINE_ARGUMENTS.model_name == 'vggface':
             optimizer = tfa.optimizers.Lookahead(
                 tf.keras.optimizers.SGD(lr, momentum=0.9))
             # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.Adam(lr))
@@ -601,12 +601,15 @@ def create_vggface_model(input_shape, mode, weights):
         backbone_model.load_weights(weights)
 
     if 'train' in mode:
-        train_layer = 20
-        print('\nUnfreezing vggface net layers starting {}'.format(train_layer))
-        for layer in backbone_model.layers[:train_layer]:
-            layer.trainable = False
-        for layer in backbone_model.layers[train_layer:]:
-            layer.trainable = True
+        N = 20
+        if CMDLINE_ARGUMENTS.frozen >=0:
+            N = CMDLINE_ARGUMENTS.frozen
+        print('Freezing first %d conv vggface layers!' % N)
+        for i, layer in enumerate(base_model.layers):
+            if i < N:
+                layer.trainable = False
+            else:
+                layer.trainable = True
 
     net = backbone_model.output
     out = Activation('sigmoid')(net)
