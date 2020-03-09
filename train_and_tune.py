@@ -76,6 +76,7 @@ def preprocess_img(img):
 
     return img
 
+
 @tf.function
 def process_path(file_path):
     label = get_label(file_path)
@@ -268,15 +269,16 @@ def freeze_first_n(base_model, N):
         print(i, layer.name, layer.trainable)
 
 
-def callbacks_list(layer_index):
+def callbacks_list(layer_index, is_pair):
 
     model_name = CMDLINE_ARGUMENTS.model_name
     output_dir = CMDLINE_ARGUMENTS.output_dir
+    phase = 'p' if is_pair else 'u'
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath=os.path.join(
-                output_dir, '%s_weights_li%d_ep{epoch}.tf' % (model_name, layer_index)),
+                output_dir, '%s_weights_li%d_ep{epoch}_%s.tf' % (model_name, layer_index, phase)),
             save_best_only=True,
             monitor='val_loss',
             mode='min',
@@ -291,7 +293,7 @@ def callbacks_list(layer_index):
             restore_best_weights=True,
             verbose=1),
         tf.keras.callbacks.CSVLogger(
-            os.path.join(output_dir, 'training_log_%s_li_%d.csv' % (model_name, layer_index))),
+            os.path.join(output_dir, 'training_log_%s_li_%d_%s.csv' % (model_name, layer_index, phase))),
     ]
 
     return callbacks
@@ -305,28 +307,26 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
     eval_dataset = input_dataset(
         CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=cache_eval, pair=is_pair)
 
+    print(backbone_model.summary())
     val_loss = np.Inf
-    best_weights = model.weights
+    best_weights = model.get_weights()
 
     for li in layer_index:
         freeze_first_n(backbone_model, li)
         compile_model(model, CMDLINE_ARGUMENTS.mode, CMDLINE_ARGUMENTS.lr)
-        print(model.summary())
         hfit = model.fit(train_dataset, epochs=CMDLINE_ARGUMENTS.epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
-                         callbacks=callbacks_list(li))
+                         callbacks=callbacks_list(li, is_pair))
         phase_val_loss = min(hfit.history['val_loss'])
         completed_epochs = len(hfit.history['val_loss'])
         if phase_val_loss < val_loss:
             val_loss = phase_val_loss
-            print('\nval_loss has improved to %f, backing up best weights.' % val_loss)
+            print('\nOn li %d val_loss has improved to %f, backing up best weights.' % (li, val_loss))
             best_weights = model.get_weights()
             if completed_epochs == CMDLINE_ARGUMENTS.epochs:
-                print(
-                    '\nWarning: Not early stopped, possibly not using the best weights.')
+                print('\nWarning: Not early stopped, possibly not using the best weights.')
         else:
-            print(
-                'Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
+            print('Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
             break
 
     model.set_weights(best_weights)
