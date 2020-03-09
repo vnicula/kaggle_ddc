@@ -123,13 +123,12 @@ def prepare_dataset(ds, is_training, batch_size, cache):
             print('Caching dataset is_training: %s' % is_training)
             ds = ds.cache()
 
-    ds = ds.batch(batch_size)
-
+    # TODO move this after batching - deal with batch jitter and jpeg qual
     if is_training:
         # ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         ds = ds.map(augment_image.image_augment,
                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
+    ds = ds.batch(batch_size)
     ds = ds.map(preprocess_img, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
