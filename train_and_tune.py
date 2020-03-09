@@ -16,7 +16,9 @@ import efficientnet.tfkeras
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
+
 from keras_vggface.vggface import VGGFace
+from keras_vggface import utils
 
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
@@ -56,22 +58,22 @@ def get_label(file_path):
 
 
 def preprocess_img(img):
+    # Note: at this point image should be 3D-4D tf.float32 0.-255.
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
-        img = tf.cast(img, tf.float32)  # needed, they do simple division
         img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
-        img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
-        img = tf.cast(img, tf.float32)
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-    elif CMDLINE_ARGUMENTS.model_name == 'facenet' \
-            or CMDLINE_ARGUMENTS.model_name == 'vggface' \
-            or CMDLINE_ARGUMENTS.model_name == 'resface':
-        img = tf.cast(img, tf.float32)
+    elif CMDLINE_ARGUMENTS.model_name == 'vggface':
+        img = utils.preprocess_input(img, version=1)
+    elif CMDLINE_ARGUMENTS.model_name == 'resface':
+        img = utils.preprocess_input(img, version=2)
+    elif CMDLINE_ARGUMENTS.model_name == 'facenet':
         # TODO: incorrect as it doesn't use their dataset channel means
         img = tf.image.per_image_standardization(img)
     else:
+        # [0., 1.)
         img = tf.image.convert_image_dtype(img, tf.float32)
 
     return img
@@ -83,7 +85,8 @@ def process_path(file_path):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = tf.image.decode_png(img, channels=3)
-    img = preprocess_img(img)
+    img = tf.cast(img, tf.float32)
+    # img = preprocess_img(img)
 
     return img, label
 
@@ -120,15 +123,14 @@ def prepare_dataset(ds, is_training, batch_size, cache):
             print('Caching dataset is_training: %s' % is_training)
             ds = ds.cache()
 
+    ds = ds.batch(batch_size)
+
     if is_training:
         # ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         ds = ds.map(augment_image.image_augment,
                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    ds = ds.batch(batch_size)
-
-    # `prefetch` lets the dataset fetch batches in the background while the model
-    # is training.
+    ds = ds.map(preprocess_img, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
     return ds
@@ -322,12 +324,11 @@ def callbacks_list(layer_index, is_pair):
 
 
 def fit_with_schedule(model, backbone_model, layer_index, is_pair):
-
+    assert CMDLINE_ARGUMENTS.mode == 'train', "Trying to call fit with mode %s" % CMDLINE_ARGUMENTS.mode
     train_dataset = input_dataset(
         CMDLINE_ARGUMENTS.train_dir, is_training=True, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=False, pair=is_pair)
-    cache_eval = False if CMDLINE_ARGUMENTS.mode == 'eval' else True
     eval_dataset = input_dataset(
-        CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=cache_eval, pair=is_pair)
+        CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=True, pair=is_pair)
 
     print(backbone_model.summary())
     val_loss = np.Inf
@@ -415,12 +416,13 @@ def main():
     # fractions, counts = class_fractions(eval_dataset)
     # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
-    elif args.mode == 'eval':
+    if args.mode == 'eval':
         eval_dataset = input_dataset(
             args.eval_dir, is_training=False, batch_size=batch_size,
-            cache=False if args.mode == 'eval' else True,
+            cache=False,
             pair=False
         )
+        compile_model(model, CMDLINE_ARGUMENTS.mode, CMDLINE_ARGUMENTS.lr)
         model.evaluate(eval_dataset)
 
     if args.save == 'True':
