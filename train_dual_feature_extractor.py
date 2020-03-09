@@ -598,12 +598,12 @@ def create_resface_model(input_shape, mode):
     if 'train' in mode:
         # vggface_weights = 'pretrained/rcmalli_vggface_tf_notop_vgg16.h5'
         vggface_weights = 'vggface'
-    print('Loaded vggface weights from: ', vggface_weights)
+    print('Loaded resface weights from: ', vggface_weights)
     base_model = VGGFace(model='resnet50', weights=vggface_weights,
         input_shape=input_shape, include_top=False, pooling='avg')
 
     if 'train' in mode or 'tune' in mode:
-        N = 200 if mode == 'train' else 150
+        N = 141 if mode == 'train' else 79
         if CMDLINE_ARGUMENTS.frozen >=0:
             N = CMDLINE_ARGUMENTS.frozen
         print('\nUnfreezing last %d resface net layers!' % N)
