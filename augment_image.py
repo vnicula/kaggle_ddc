@@ -7,8 +7,13 @@ import tensorflow_addons as tfa
 def random_jitter(image):
 
     image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    image = tf.image.random_crop(
-        image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    if image.shape.__len__() == 4:
+        batch_size = tf.shape(image)[0]
+        image = tf.image.random_crop(
+            image, size=[batch_size, constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    elif image.shape.__len__() == 3:
+        image = tf.image.random_crop(
+            image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
     return image
 

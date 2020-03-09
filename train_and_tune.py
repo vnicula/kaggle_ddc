@@ -243,9 +243,9 @@ def create_efficientnet_model(input_shape, mode):
 
     weights = None
     if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
-        weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        weights = 'pretrained/efficientnet-b2_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', weights)
-    backbone_model = EfficientNetB1(weights=weights, input_shape=input_shape,
+    backbone_model = EfficientNetB2(weights=weights, input_shape=input_shape,
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
