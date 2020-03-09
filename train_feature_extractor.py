@@ -452,14 +452,13 @@ def create_mobilenet_model(input_shape, mode):
 
 def create_efficientnet_model(input_shape, mode, weights):
 
-    input_tensor = Input(shape=input_shape)
     # create the base pre-trained model
     efficientnet_weights = None
     # efficientnet_weights = 'imagenet'
     if weights is None:
         efficientnet_weights = 'pretrained/efficientnet-b2_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB2(weights=efficientnet_weights, input_tensor=input_tensor,
+    base_model = EfficientNetB2(weights=efficientnet_weights, input_shape=input_shape,
                                     include_top=False, pooling='avg')
 
     net = base_model.output

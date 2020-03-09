@@ -241,7 +241,7 @@ def create_efficientnet_model(input_shape, mode):
     if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
         weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', weights)
-    backbone_model = EfficientNetB1(weights=weights, input_tensor=input_tensor,
+    backbone_model = EfficientNetB1(weights=weights, input_shape=input_shape,
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
@@ -266,8 +266,8 @@ def create_model(model_name, input_shape, mode):
     #     return create_xception_model(input_shape, mode)
     # if model_name == 'resnet':
     #     return create_resnet_model(input_shape, mode)
-    # if model_name == 'efficientnet':
-    #     return create_efficientnet_model(input_shape, mode)
+    if model_name == 'efficientnet':
+        return create_efficientnet_model(input_shape, mode)
     if model_name == 'facenet':
         return create_facenet_model(input_shape, mode)
     if model_name == 'vggface':
@@ -365,7 +365,7 @@ def main():
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.005)
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--frozen', type=int, default=-1)
 
