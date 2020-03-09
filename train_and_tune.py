@@ -66,9 +66,12 @@ def preprocess_img(img, label):
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'vggface':
-        img = utils.preprocess_input(img, version=1)
+        # TODO fix these
+        # img = utils.preprocess_input(img, version=1)
+        img -= 127.5
     elif CMDLINE_ARGUMENTS.model_name == 'resface':
-        img = utils.preprocess_input(img, version=2)
+        # img = utils.preprocess_input(img, version=2)
+        img -= 127.5
     elif CMDLINE_ARGUMENTS.model_name == 'facenet':
         # TODO: incorrect as it doesn't use their dataset channel means
         img = tf.image.per_image_standardization(img)
