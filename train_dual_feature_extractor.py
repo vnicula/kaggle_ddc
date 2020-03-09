@@ -125,7 +125,7 @@ def random_rotate(image):
         interpolation_order=1
     )
     # image = tf.convert_to_tensor(image_array)
-    return image
+    return image_array
 
 
 @tf.function

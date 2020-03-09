@@ -82,6 +82,16 @@ def random_jitter(image):
     return image
 
 
+def random_rotate(image):
+    if image.shape.__len__() == 4:
+        random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 8, maxval = np.pi / 8)
+    if image.shape.__len__() == 3:
+        random_angles = tf.random.uniform(shape = (), minval = -np.pi / 8, maxval = np.pi / 8)
+
+    # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
+    return tfa.image.rotate(image, random_angles)
+
+@tf.function
 def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
     Args:
@@ -100,9 +110,9 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(jitter_choice < 0.75, lambda: x, lambda: random_jitter(x))
 
-    # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    # x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: tf.py_function(random_rotate, [x], tf.float32))
-    # x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+    rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: random_rotate(x))
+    x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
 
     jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
@@ -238,11 +248,30 @@ def create_facenet_model(input_shape, mode):
     backbone_model = Model(inputs=base_model.input, outputs=output)
     
     net = backbone_model(input_tensor)
+    net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=input_tensor, outputs=net)
 
     return model, backbone_model, [423, 407, 391, 375, 0]
+
+
+def create_vggface_model(input_shape, mode):
+
+    vggface_weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        vggface_weights = 'vggface'
+    print('Loading vggface weights from: ', vggface_weights)
+    backbone_model = VGGFace(model='vgg16', weights=vggface_weights, input_shape=input_shape,
+        include_top=False, pooling='avg')
+    
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [19, 15, 11, 0]
 
 
 def create_model(model_name, input_shape, mode):
@@ -262,8 +291,8 @@ def create_model(model_name, input_shape, mode):
     #     return create_efficientnet_model(input_shape, mode)
     if model_name == 'facenet':
         return create_facenet_model(input_shape, mode)
-    # if model_name == 'vggface':
-    #     return create_vggface_model(input_shape, mode)
+    if model_name == 'vggface':
+        return create_vggface_model(input_shape, mode)
     # if model_name == 'resface':
     #     return create_resface_model(input_shape, mode)
 
@@ -332,14 +361,14 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
         if phase_val_loss < val_loss:
             val_loss = phase_val_loss
             print('\nval_loss has improved to %f, backing up best weights.' % val_loss)
-            best_weights = model.weights
+            best_weights = model.get_weights()
             if completed_epochs == CMDLINE_ARGUMENTS.epochs:
                 print('\nWarning: Not early stopped, possibly not using the best weights.')
         else:
             print('Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
             break
     
-    model.weights = best_weights
+    model.set_weights(best_weights)
 
 
 def main():
@@ -373,10 +402,11 @@ def main():
 
     custom_objs = {
         'fraction_positives': fraction_positives,
-        'SeqWeightedAttention': SeqWeightedAttention,
+        'Lookahead': tfa.optimizers.Lookahead,
+        # 'SeqWeightedAttention': SeqWeightedAttention,
         # 'binary_focal_loss_fixed': binary_focal_loss(alpha=0.47),
-        'sce_loss': sce_loss,
-        'RectifiedAdam': tfa.optimizers.RectifiedAdam,
+        # 'sce_loss': sce_loss,
+        # 'RectifiedAdam': tfa.optimizers.RectifiedAdam,
     }
 
     if args.mode == 'train' or args.mode == 'eval':
