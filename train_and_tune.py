@@ -182,10 +182,11 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        # if CMDLINE_ARGUMENTS.model_name == 'resface':
-        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
-        # optimizer = tfa.optimizers.Lookahead(
-        #     tf.keras.optimizers.SGD(lr, momentum=0.9))
+        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface':
+            optimizer = tfa.optimizers.Lookahead(
+                optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+        else:
+            optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
@@ -209,12 +210,13 @@ def create_facenet_model(input_shape, mode):
     backbone_model = Model(inputs=base_model.input, outputs=output)
 
     net = backbone_model(input_tensor)
-    net = Dropout(0.25)(net)
+    net = Flatten()(net)
+    # net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=input_tensor, outputs=net)
 
-    return model, backbone_model, [423, 407, 391, 375, 0]
+    return model, backbone_model, [423, 407, 391, 375, 359, 343, 327, 144, 20, 0]
 
 
 def create_vggface_model(input_shape, mode):
@@ -227,12 +229,12 @@ def create_vggface_model(input_shape, mode):
                              include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    # net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [19, 15, 11, 7, 4, 0]
+    return model, backbone_model, [19, 17, 15, 11, 7, 4, 0]
 
 
 def create_efficientnet_model(input_shape, mode):
@@ -307,7 +309,7 @@ def callbacks_list(layer_index, is_pair):
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',  # watch out for reg losses
-            min_delta=1e-3,
+            min_delta=5e-4,
             patience=2,
             mode='min',
             restore_best_weights=True,
@@ -422,9 +424,9 @@ def main():
         model.evaluate(eval_dataset)
 
     if args.save == 'True':
-        model_file_name = args.mode + '_dual_featx_full_%s_model.h5' % model_name
+        model_file_name = args.mode + '_tt_full_%s_model.h5' % model_name
         model_weights_file_name = args.mode + \
-            '_dual_featx_full_%s_model_weights.h5' % model_name
+            '_tt_full_%s_model_weights.h5' % model_name
         if args.load is not None:
             model_file_name = os.path.basename(
                 args.load) + '_' + model_file_name
