@@ -182,8 +182,10 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        optimizer = tfa.optimizers.Lookahead(
-            tf.keras.optimizers.SGD(lr, momentum=0.9))
+        # if CMDLINE_ARGUMENTS.model_name == 'resface':
+        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        # optimizer = tfa.optimizers.Lookahead(
+        #     tf.keras.optimizers.SGD(lr, momentum=0.9))
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
@@ -217,11 +219,11 @@ def create_facenet_model(input_shape, mode):
 
 def create_vggface_model(input_shape, mode):
 
-    vggface_weights = None
+    weights = None
     if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
-        vggface_weights = 'vggface'
-    print('Loading vggface weights from: ', vggface_weights)
-    backbone_model = VGGFace(model='vgg16', weights=vggface_weights, input_shape=input_shape,
+        weights = 'vggface'
+    print('Loading vggface weights from: ', weights)
+    backbone_model = VGGFace(model='vgg16', weights=weights, input_shape=input_shape,
                              include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
@@ -230,7 +232,25 @@ def create_vggface_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [19, 15, 11, 0]
+    return model, backbone_model, [19, 15, 11, 7, 4, 0]
+
+
+def create_efficientnet_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB1(weights=weights, input_tensor=input_tensor,
+                                    include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [332, 329, 301, 228, 170, 112, 0]
 
 
 def create_model(model_name, input_shape, mode):
