@@ -1,7 +1,7 @@
 import argparse
+import augment_image
 import constants
 import feature_extractor_models as featx
-from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -10,6 +10,9 @@ import tf_explain
 import tensorflow_addons as tfa
 import time
 
+from PIL import Image
+
+import efficientnet.tfkeras
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 from tensorflow.keras.applications.xception import Xception
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
@@ -21,13 +24,12 @@ from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPo
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset, sce_loss, gce_loss
+tfkl = tf.keras.layers
 
 CMDLINE_ARGUMENTS = None
 
-tfkl = tf.keras.layers
-
+np.random.seed(1234)
 tf.random.set_seed(1234)
-IMAGES_LOG_DIR = "logs/images"
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -55,72 +57,26 @@ def get_label(file_path):
 
 def preprocess_img(img):
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
-        img = tf.cast(img, tf.float32)
-        # img = tf.keras.applications.efficientnet.preprocess_input(img)
+        img = tf.cast(img, tf.float32)  # needed, they do simple division
+        img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.xception.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
         img = tf.cast(img, tf.float32)
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-    elif CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface' or CMDLINE_ARGUMENTS.model_name == 'resface':
+    elif CMDLINE_ARGUMENTS.model_name == 'facenet' \
+            or CMDLINE_ARGUMENTS.model_name == 'vggface' \
+            or CMDLINE_ARGUMENTS.model_name == 'resface':
         img = tf.cast(img, tf.float32)
+        # TODO: incorrect as it doesn't use their dataset channel means
         img = tf.image.per_image_standardization(img)
-    else:    
-        # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+    else:
         img = tf.image.convert_image_dtype(img, tf.float32)
 
     return img
 
-
-def random_jitter(image):
-
-    image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    image = tf.image.random_crop(
-        image, size=[constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    return image
-
-
-def random_rotate(image):
-    if image.shape.__len__() == 4:
-        random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 8, maxval = np.pi / 8)
-    if image.shape.__len__() == 3:
-        random_angles = tf.random.uniform(shape = (), minval = -np.pi / 8, maxval = np.pi / 8)
-
-    # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
-    return tfa.image.rotate(image, random_angles)
-
 @tf.function
-def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
-    """augmentation
-    Args:
-        x: Image
-    Returns:
-        Augmented image
-    """
-    # TODO investigate these two
-    # x = tf.image.random_hue(x, 0.08)
-    # x = tf.image.random_saturation(x, 0.6, 1.6)
-    
-    x = tf.image.random_brightness(x, 0.1)
-    x = tf.image.random_contrast(x, 0.8, 1.2)
-    x = tf.image.random_flip_left_right(x)
-
-    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jitter_choice < 0.75, lambda: x, lambda: random_jitter(x))
-
-    rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: random_rotate(x))
-    x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=40, max_jpeg_quality=90))
-
-    return (x, y)
-
-
 def process_path(file_path):
     label = get_label(file_path)
     # load the raw data from the file as a string
@@ -165,7 +121,8 @@ def prepare_dataset(ds, is_training, batch_size, cache):
 
     if is_training:
         # ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        ds = ds.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        ds = ds.map(augment_image.image_augment,
+                    num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     ds = ds.batch(batch_size)
 
@@ -195,7 +152,7 @@ def input_dataset(input_dir, is_training, batch_size, cache, pair):
     if pair:
         labeled_ds = labeled_ds.flat_map(split_pair)
     else:
-        labeled_ds = balance_dataset(labeled_ds, is_training)    
+        labeled_ds = balance_dataset(labeled_ds, is_training)
     labeled_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
 
     return labeled_ds
@@ -221,15 +178,16 @@ def compile_model(model, mode, lr):
     ]
     if mode == 'train':
         METRICS.append(fraction_positives)
-    
+
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+        optimizer = tfa.optimizers.Lookahead(
+            tf.keras.optimizers.SGD(lr, momentum=0.9))
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
     )
-    
+
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
@@ -246,7 +204,7 @@ def create_facenet_model(input_shape, mode):
             print('output set to {}.'.format(layer.name))
             break
     backbone_model = Model(inputs=base_model.input, outputs=output)
-    
+
     net = backbone_model(input_tensor)
     net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
@@ -263,8 +221,8 @@ def create_vggface_model(input_shape, mode):
         vggface_weights = 'vggface'
     print('Loading vggface weights from: ', vggface_weights)
     backbone_model = VGGFace(model='vgg16', weights=vggface_weights, input_shape=input_shape,
-        include_top=False, pooling='avg')
-    
+                             include_top=False, pooling='avg')
+
     net = Flatten()(backbone_model.output)
     net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
@@ -301,7 +259,7 @@ def create_model(model_name, input_shape, mode):
 
 def freeze_first_n(base_model, N):
 
-    print('\nFreezing first %d %s layers!' %(N, CMDLINE_ARGUMENTS.model_name))
+    print('\nFreezing first %d %s layers!' % (N, CMDLINE_ARGUMENTS.model_name))
     for i, layer in enumerate(base_model.layers):
         if i < N:
             layer.trainable = False
@@ -317,7 +275,8 @@ def callbacks_list(layer_index):
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
-            filepath=os.path.join(output_dir, '%s_weights_li_%s_{epoch}.tf' % (model_name, layer_index)),
+            filepath=os.path.join(
+                output_dir, '%s_weights_li%d_ep{epoch}.tf' % (model_name, layer_index)),
             save_best_only=True,
             monitor='val_loss',
             mode='min',
@@ -325,7 +284,7 @@ def callbacks_list(layer_index):
             save_weights_only=True,
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss', # watch out for reg losses
+            monitor='val_loss',  # watch out for reg losses
             min_delta=1e-3,
             patience=2,
             mode='min',
@@ -354,8 +313,8 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
         compile_model(model, CMDLINE_ARGUMENTS.mode, CMDLINE_ARGUMENTS.lr)
         print(model.summary())
         hfit = model.fit(train_dataset, epochs=CMDLINE_ARGUMENTS.epochs,  # class_weight=class_weight,
-                                validation_data=eval_dataset,  # validation_steps=validation_steps,
-                                callbacks=callbacks_list(li))
+                         validation_data=eval_dataset,  # validation_steps=validation_steps,
+                         callbacks=callbacks_list(li))
         phase_val_loss = min(hfit.history['val_loss'])
         completed_epochs = len(hfit.history['val_loss'])
         if phase_val_loss < val_loss:
@@ -363,11 +322,13 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
             print('\nval_loss has improved to %f, backing up best weights.' % val_loss)
             best_weights = model.get_weights()
             if completed_epochs == CMDLINE_ARGUMENTS.epochs:
-                print('\nWarning: Not early stopped, possibly not using the best weights.')
+                print(
+                    '\nWarning: Not early stopped, possibly not using the best weights.')
         else:
-            print('Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
+            print(
+                'Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
             break
-    
+
     model.set_weights(best_weights)
 
 
@@ -387,7 +348,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--frozen', type=int, default=-1)
-    
+
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
     CMDLINE_ARGUMENTS = args
@@ -415,7 +376,8 @@ def main():
 
         with strategy.scope():
             # due to bugs need to load weights for mirrored strategy - cannot load full model
-            model, backbone_model, layer_index = create_model(model_name, in_shape, args.mode)
+            model, backbone_model, layer_index = create_model(
+                model_name, in_shape, args.mode)
             if args.load is not None:
                 print('\nLoading weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -431,7 +393,6 @@ def main():
     # fractions, counts = class_fractions(eval_dataset)
     # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
 
-
     elif args.mode == 'eval':
         eval_dataset = input_dataset(
             args.eval_dir, is_training=False, batch_size=batch_size,
@@ -442,10 +403,13 @@ def main():
 
     if args.save == 'True':
         model_file_name = args.mode + '_dual_featx_full_%s_model.h5' % model_name
-        model_weights_file_name = args.mode + '_dual_featx_full_%s_model_weights.h5' % model_name
+        model_weights_file_name = args.mode + \
+            '_dual_featx_full_%s_model_weights.h5' % model_name
         if args.load is not None:
-            model_file_name = os.path.basename(args.load) + '_' + model_file_name
-            model_weights_file_name = os.path.basename(args.load) + '_' + model_weights_file_name
+            model_file_name = os.path.basename(
+                args.load) + '_' + model_file_name
+            model_weights_file_name = os.path.basename(
+                args.load) + '_' + model_weights_file_name
         model.save_weights(os.path.join(output_dir, model_weights_file_name))
         model.save(os.path.join(output_dir, model_file_name))
 
