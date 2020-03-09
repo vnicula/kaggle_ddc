@@ -57,7 +57,7 @@ def get_label(file_path):
     )
 
 
-def preprocess_img(img):
+def preprocess_img(img, label):
     # Note: at this point image should be 3D-4D tf.float32 0.-255.
     if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
         img = efficientnet.tfkeras.preprocess_input(img)
@@ -76,7 +76,7 @@ def preprocess_img(img):
         # [0., 1.)
         img = tf.image.convert_image_dtype(img, tf.float32)
 
-    return img
+    return img, label
 
 
 @tf.function
