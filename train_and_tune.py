@@ -338,9 +338,11 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
     val_loss = np.Inf
     best_weights = model.get_weights()
 
-    for li in layer_index:
+    for i, li in enumerate(layer_index):
         freeze_first_n(backbone_model, li)
-        compile_model(model, CMDLINE_ARGUMENTS.mode, CMDLINE_ARGUMENTS.lr)
+        lr = float(CMDLINE_ARGUMENTS.lr) * (0.9 ** i)
+        compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
+        print('\nStep %d/%d with layer index %d, starting training with lr=%f\n' %(i+1, len(layer_index), li, lr))
         hfit = model.fit(train_dataset, epochs=CMDLINE_ARGUMENTS.epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
