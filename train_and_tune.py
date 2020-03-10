@@ -356,6 +356,8 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
             model.set_weights(best_weights)
 
     model.set_weights(best_weights)
+    
+    return val_loss, best_weights
 
 
 def main():
@@ -412,8 +414,12 @@ def main():
                 print('\nTraining model from scratch.')
 
             if args.mode == 'train':
-                fit_with_schedule(model, backbone_model, layer_index, True)
-                fit_with_schedule(model, backbone_model, layer_index, False)
+                val_loss_p = fit_with_schedule(model, backbone_model, layer_index, True)
+                best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
+                printf('Saving best model on paired dset to %s' % best_model_p_name)
+                model.save(os.path.join(output_dir, best_model_p_name))
+                val_loss_u = fit_with_schedule(model, backbone_model, layer_index, False)
+                print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
     # print(next(iter(eval_dataset)))
     # fractions, counts = class_fractions(eval_dataset)
