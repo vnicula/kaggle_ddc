@@ -991,3 +991,12 @@ def gce_loss(y_true, y_pred):
     q = 0.7
     t_loss = (1 - tf.pow(tf.reduce_sum(y_true * y_pred, axis=-1), q)) / q
     return tf.reduce_mean(t_loss)
+
+
+def print_trainable_summary(model):
+    trainable_count = int(np.sum([K.count_params(p) for p in model.trainable_weights]))
+    non_trainable_count = int(np.sum([K.count_params(p) for p in model.non_trainable_weights]))
+
+    print('Total params: {:,}'.format(trainable_count + non_trainable_count))
+    print('Trainable params: {:,}'.format(trainable_count))
+    print('Non-trainable params: {:,}'.format(non_trainable_count))

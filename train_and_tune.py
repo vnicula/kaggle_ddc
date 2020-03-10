@@ -25,7 +25,9 @@ from tensorflow.keras.layers import Activation, Bidirectional, BatchNormalizatio
 from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
-from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention, balance_dataset, sce_loss, gce_loss
+from keras_utils import binary_focal_loss, save_loss, LRFinder, SeqWeightedAttention
+from keras_utils import balance_dataset, sce_loss, gce_loss, print_trainable_summary
+
 tfkl = tf.keras.layers
 
 CMDLINE_ARGUMENTS = None
@@ -239,7 +241,7 @@ def create_vggface_model(input_shape, mode):
                              include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
@@ -257,7 +259,7 @@ def create_resface_model(input_shape, mode):
                              include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
@@ -351,6 +353,7 @@ def callbacks_list(layer_index, is_pair):
 
 def fit_with_schedule(model, backbone_model, layer_index, is_pair):
     assert CMDLINE_ARGUMENTS.mode == 'train', "Trying to call fit with mode %s" % CMDLINE_ARGUMENTS.mode
+
     train_dataset = input_dataset(
         CMDLINE_ARGUMENTS.train_dir, is_training=True, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=False, pair=is_pair)
     eval_dataset = input_dataset(
@@ -359,12 +362,16 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
     print(backbone_model.summary())
     val_loss = np.Inf
     best_weights = model.get_weights()
+    dataset_name = 'paired ' if is_pair else 'unpaired'
+    print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
 
     for i, li in enumerate(layer_index):
         freeze_first_n(backbone_model, li)
+        print_trainable_summary(model)
         lr = float(CMDLINE_ARGUMENTS.lr) * (0.9 ** i)
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
-        print('\nStep %d/%d with layer index %d, starting training with lr=%f\n' %(i+1, len(layer_index), li, lr))
+        print('\nStep %d/%d with layer index %d, best val_loss %f, starting training with lr=%f\n' %
+            (i+1, len(layer_index), li, val_loss, lr))
         hfit = model.fit(train_dataset, epochs=CMDLINE_ARGUMENTS.epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
@@ -423,6 +430,8 @@ def main():
         # 'RectifiedAdam': tfa.optimizers.RectifiedAdam,
     }
 
+    phase = 'p'
+
     if args.mode == 'train' or args.mode == 'eval':
         strategy = tf.distribute.MirroredStrategy()
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
@@ -431,19 +440,27 @@ def main():
             # due to bugs need to load weights for mirrored strategy - cannot load full model
             model, backbone_model, layer_index = create_model(
                 model_name, in_shape, args.mode)
+            phase_layer_index = {'p': layer_index, 'u': layer_index}
             if args.load is not None:
                 print('\nLoading weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
                 model.load_weights(args.load)
+                load_file_name, _ = os.path.splitext(os.path.basename(args.load))
+                phase = load_file_name.split('_')[-1]
+                load_li = int(load_file_name.split('_')[-3][2:])
+                phase_layer_index[phase] = layer_index[layer_index.index(load_li):]
+                print('Loaded phase: %s, layer index: %s' % (phase, load_li))
             else:
                 print('\nTraining model from scratch.')
 
             if args.mode == 'train':
-                val_loss_p = fit_with_schedule(model, backbone_model, layer_index, True)
-                best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
-                print('Saving best model on paired dset to %s' % best_model_p_name)
-                model.save(os.path.join(output_dir, best_model_p_name))
-                val_loss_u = fit_with_schedule(model, backbone_model, layer_index, False)
+                val_loss_p = np.Inf
+                if phase == 'p':
+                    val_loss_p = fit_with_schedule(model, backbone_model, phase_layer_index['p'], True)
+                    best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
+                    print('Saving best model on paired dset to %s with val_loss paired %f' % (best_model_p_name, val_loss_p))
+                    model.save(os.path.join(output_dir, best_model_p_name))
+                val_loss_u = fit_with_schedule(model, backbone_model, phase_layer_index['u'], False)
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
     # print(next(iter(eval_dataset)))
@@ -464,10 +481,8 @@ def main():
         model_weights_file_name = args.mode + \
             '_tt_full_%s_model_weights.h5' % model_name
         if args.load is not None:
-            model_file_name = os.path.basename(
-                args.load) + '_' + model_file_name
-            model_weights_file_name = os.path.basename(
-                args.load) + '_' + model_weights_file_name
+            model_file_name = os.path.basename(args.load) + '_' + model_file_name
+            model_weights_file_name = os.path.basename(args.load) + '_' + model_weights_file_name
         model.save_weights(os.path.join(output_dir, model_weights_file_name))
         model.save(os.path.join(output_dir, model_file_name))
 
