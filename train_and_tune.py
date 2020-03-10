@@ -389,7 +389,7 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
 
     model.set_weights(best_weights)
     
-    return val_loss, best_weights
+    return val_loss
 
 
 def main():
