@@ -190,7 +190,7 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'vggface':
+        if CMDLINE_ARGUMENTS.model_name == 'facenet':
             # optimizer = tfa.optimizers.Lookahead(
             #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
             optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
