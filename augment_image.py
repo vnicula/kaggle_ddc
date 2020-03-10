@@ -126,14 +126,15 @@ def preprocess_symbolic_input_vggface(x, data_format=None, version=1):
     assert data_format in {'channels_last', 'channels_first'}
 
     if data_format == 'channels_first':
-      # 'RGB'->'BGR'
-      if backend.ndim(x) == 3:
-        x = x[::-1, ...]
-      else:
-        x = x[:, ::-1, ...]
+        # 'RGB'->'BGR'
+        if tf.keras.backend.ndim(x) == 3:
+            x = x[::-1, ...]
+        else:
+            x = x[:, ::-1, ...]
     else:
-      # 'RGB'->'BGR'
-      x = x[..., ::-1]
+        # 'RGB'->'BGR'
+        x = x[..., ::-1]
+    
     mean_v1 = [93.5940, 104.7624, 129.1863]
     mean_v2 = [91.4953, 103.8827, 131.0912]
     mean_imgnet = [103.939, 116.779, 123.68]
