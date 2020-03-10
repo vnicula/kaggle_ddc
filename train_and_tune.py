@@ -70,9 +70,9 @@ def preprocess_img(img, label):
         # img = augment_image.preprocess_symbolic_input_vggface(img, version=1)
         img -= 127.5
     elif CMDLINE_ARGUMENTS.model_name == 'resface':
-        img -= 127.5
+        # img -= 127.5
         # TODO fix these, channel means are different
-        # img = augment_image.preprocess_symbolic_input_vggface(img, version=2)
+        img = augment_image.preprocess_symbolic_input_vggface(img, version=2)
         # img = utils.preprocess_input(img, version=2)
         # img = tf.keras.applications.vgg19.preprocess_input(img)
         # img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='caffe')
@@ -190,12 +190,13 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet':
-            # optimizer = tfa.optimizers.Lookahead(
-            #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
-            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
-        else:
-            optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        # if CMDLINE_ARGUMENTS.model_name == 'facenet':
+        #     # optimizer = tfa.optimizers.Lookahead(
+        #     #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+        #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+        # else:
+        # NOTE start simple for pretrained nets
+        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
@@ -246,6 +247,24 @@ def create_vggface_model(input_shape, mode):
     return model, backbone_model, [19, 17, 15, 11, 7, 4, 0]
 
 
+def create_resface_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'vggface'
+    print('Loading resface weights from: ', weights)
+    backbone_model = VGGFace(model='resnet50', weights=weights, input_shape=input_shape,
+                             include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [174, 141, 79, 37, 0]
+
+
 def create_efficientnet_model(input_shape, mode):
 
     weights = None
@@ -283,8 +302,8 @@ def create_model(model_name, input_shape, mode):
         return create_facenet_model(input_shape, mode)
     if model_name == 'vggface':
         return create_vggface_model(input_shape, mode)
-    # if model_name == 'resface':
-    #     return create_resface_model(input_shape, mode)
+    if model_name == 'resface':
+        return create_resface_model(input_shape, mode)
 
     raise ValueError('Unknown model %s' % model_name)
 
