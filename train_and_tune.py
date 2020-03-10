@@ -352,8 +352,8 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
             if completed_epochs == CMDLINE_ARGUMENTS.epochs:
                 print('\nWarning: Not early stopped, possibly not using the best weights.')
         else:
-            print('Unfreezing all layers after %d did not improve val_loss, stopping training.' % li)
-            break
+            print('Unfreezing all layers after %d did not improve val_loss, loading best weights.' % li)
+            model.set_weights(best_weights)
 
     model.set_weights(best_weights)
 
