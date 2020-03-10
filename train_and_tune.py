@@ -114,8 +114,8 @@ def split_pair(img, label):
         target_height=img_shape[0],
         target_width=w_offset
     )
-
-    return tf.data.Dataset.from_tensor_slices(([left_input, right_input], [label, label]))
+    # One of the most important 'ones' I ever wrote (was randomizing the labels)
+    return tf.data.Dataset.from_tensor_slices(([left_input, right_input], [1-label, label]))
 
 
 def prepare_dataset(ds, is_training, batch_size, cache):
