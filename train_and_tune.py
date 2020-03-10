@@ -66,10 +66,13 @@ def preprocess_img(img, label):
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'vggface':
-        img = augment_image.preprocess_symbolic_input_vggface(img, version=1)
+        # TODO fix these, use channel means
+        # img = augment_image.preprocess_symbolic_input_vggface(img, version=1)
+        img -= 127.5
     elif CMDLINE_ARGUMENTS.model_name == 'resface':
-        img = augment_image.preprocess_symbolic_input_vggface(img, version=2)
+        img -= 127.5
         # TODO fix these, channel means are different
+        # img = augment_image.preprocess_symbolic_input_vggface(img, version=2)
         # img = utils.preprocess_input(img, version=2)
         # img = tf.keras.applications.vgg19.preprocess_input(img)
         # img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='caffe')
@@ -235,7 +238,7 @@ def create_vggface_model(input_shape, mode):
                              include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    # net = Dropout(0.25)(net)
+    net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)

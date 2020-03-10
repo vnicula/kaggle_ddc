@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
+import augment_image
 import constants
 import feature_extractor_models as featx
 import math
@@ -10,6 +11,7 @@ import os
 import pickle
 import random
 import tensorflow as tf
+import tensorflow_addons as tfa
 import time
 import threading
 import tqdm
@@ -52,33 +54,6 @@ if gpus:
 D_MODEL = 784
 
 
-def random_jitter(image):
-
-    image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    image = tf.image.random_crop(
-        image, size=[tf.shape(image)[0], constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    return image
-
-
-def random_rotate(image):
-    # if image.shape.__len__() == 4:
-    #     random_angles = tf.random.uniform(shape = (tf.shape(image)[0], ), minval = -np.pi / 4, maxval = np.pi / 4)
-    # if image.shape.__len__() == 3:
-    #     random_angles = tf.random.uniform(shape = (), minval = -np.pi / 4, maxval = np.pi / 4)
-
-    # # BUG in Tfa ABI undefined symbol: _ZNK10tensorflow15shape_inference16InferenceContext11DebugStringEv
-    # return tfa.image.rotate(image, random_angles)
-
-    # NOTE this needs numpy
-    image_array = tf.keras.preprocessing.image.random_rotation(
-        image.numpy(), 30, row_axis=1, col_axis=2, channel_axis=3, fill_mode='constant', cval=0.0,
-        interpolation_order=1
-    )
-    # image = tf.convert_to_tensor(image_array)
-    return image
-
-
 @tf.function
 def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """augmentation
@@ -97,16 +72,17 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     img = tf.image.random_contrast(img, 0.8, 1.2)
     img = tf.image.random_flip_left_right(img)
 
-    # rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    # img = tf.cond(rotate_choice < 0.5, lambda: img, lambda: tf.py_function(random_rotate, [img], tf.float32))
-    # img = tf.reshape(img, [constants.SEQ_LEN, constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-    
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    img = tf.cond(jitter_choice < 0.5, lambda: img, lambda: random_jitter(img))
+    img = tf.cond(jitter_choice < 0.75, lambda: img, lambda: image_augment.random_jitter(img))
 
+    rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    img = tf.cond(rotate_choice < 0.75, lambda: x, lambda: random_rotate(x))
+    # img = tf.reshape(img, [constants.SEQ_LEN, constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
+
+    # TODO make it to work on 4D and 5D
     # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-    #     x, min_jpeg_quality=80, max_jpeg_quality=100))
+    #     x, min_jpeg_quality=40, max_jpeg_quality=90))
 
     return {'input_1':img, 'input_2':x['input_2']}, y
 
