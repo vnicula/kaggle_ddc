@@ -416,7 +416,7 @@ def main():
             if args.mode == 'train':
                 val_loss_p = fit_with_schedule(model, backbone_model, layer_index, True)
                 best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
-                printf('Saving best model on paired dset to %s' % best_model_p_name)
+                print('Saving best model on paired dset to %s' % best_model_p_name)
                 model.save(os.path.join(output_dir, best_model_p_name))
                 val_loss_u = fit_with_schedule(model, backbone_model, layer_index, False)
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
