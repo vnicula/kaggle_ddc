@@ -115,3 +115,39 @@ def image_augment2(x: (tf.Tensor, tf.Tensor), y: tf.Tensor) -> ((tf.Tensor, tf.T
 
     return ((x0, x1), y)
 
+
+def preprocess_symbolic_input_vggface(x, data_format=None, version=1):
+    """Preprocesses a tensor encoding a batch of images.
+    Returns:
+        Preprocessed tensor.
+    """
+    if data_format is None:
+        data_format = tf.keras.backend.image_data_format()
+    assert data_format in {'channels_last', 'channels_first'}
+
+    if data_format == 'channels_first':
+      # 'RGB'->'BGR'
+      if backend.ndim(x) == 3:
+        x = x[::-1, ...]
+      else:
+        x = x[:, ::-1, ...]
+    else:
+      # 'RGB'->'BGR'
+      x = x[..., ::-1]
+    mean_v1 = [93.5940, 104.7624, 129.1863]
+    mean_v2 = [91.4953, 103.8827, 131.0912]
+    mean_imgnet = [103.939, 116.779, 123.68]
+
+    if version == 1:
+        mean_tensor = tf.keras.backend.constant(-np.array(mean_v1))
+    else:
+        mean_tensor = tf.keras.backend.constant(-np.array(mean_v2))
+
+    # Zero-center by mean pixel
+    if tf.keras.backend.dtype(x) != tf.keras.backend.dtype(mean_tensor):
+        x = tf.keras.backend.bias_add(
+            x, tf.keras.backend.cast(mean_tensor, tf.keras.backend.dtype(x)), data_format=data_format)
+    else:
+        x = tf.keras.backend.bias_add(x, mean_tensor, data_format)
+
+    return x

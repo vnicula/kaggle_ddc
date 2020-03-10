@@ -66,12 +66,13 @@ def preprocess_img(img, label):
     elif CMDLINE_ARGUMENTS.model_name == 'mobilenet':
         img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'vggface':
-        # TODO fix these
-        # img = utils.preprocess_input(img, version=1)
-        img -= 127.5
+        img = augment_image.preprocess_symbolic_input_vggface(img, version=1)
     elif CMDLINE_ARGUMENTS.model_name == 'resface':
+        img = augment_image.preprocess_symbolic_input_vggface(img, version=2)
+        # TODO fix these, channel means are different
         # img = utils.preprocess_input(img, version=2)
-        img -= 127.5
+        # img = tf.keras.applications.vgg19.preprocess_input(img)
+        # img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='caffe')
     elif CMDLINE_ARGUMENTS.model_name == 'facenet':
         # TODO: incorrect as it doesn't use their dataset channel means
         img = tf.image.per_image_standardization(img)
