@@ -189,7 +189,7 @@ class OneMIL():
         self.create_mil_models()
         self.model = self.create_model()
 
-    def backbone(self, input_shape, model_name):
+    def backbone(self, input_shape, model_name, num_filters=16):
         # NOTE effnet doesnt expose model name and cannot reuse model with same name
         # ERROR ValueError: The name "efficientnet-b0" is used 4 times in the model. All layer names should be unique.
         # TODO patch effnet to expose model name
