@@ -61,7 +61,7 @@ def get_label(file_path):
 
 def preprocess_img(img, label):
     # Note: at this point image should be 3D-4D tf.float32 0.-255.
-    if CMDLINE_ARGUMENTS.model_name == 'efficientnet':
+    if 'efficientnet' in CMDLINE_ARGUMENTS.model_name:
         img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.keras.applications.xception.preprocess_input(img)
