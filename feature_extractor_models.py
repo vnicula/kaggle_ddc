@@ -2,7 +2,7 @@ import tensorflow as tf
 import keras_utils
 
 import efficientnet.tfkeras
-from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
+from efficientnet.tfkeras import EfficientNet, EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
