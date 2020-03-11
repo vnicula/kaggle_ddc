@@ -290,7 +290,7 @@ def create_xception_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [126, 0]
+    return model, backbone_model, [132, 126, 106, 76, 26, 0]
 
 
 def create_efficientnetb2_model(input_shape, mode):
