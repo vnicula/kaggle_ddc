@@ -192,8 +192,10 @@ class OneMIL():
     def backbone(self, input_shape, model_name):
         weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         print('Loading efficientnet weights from: ', weights)
-        backbone_model = EfficientNetB0(weights=weights, input_shape=input_shape,
-            include_top=False, pooling='avg', model_name=model_name)
+        backbone_model = EfficientNet(1.0, 1.0, 224, 0.2,
+            model_name=model_name,
+            weights=weights, input_shape=input_shape, input_tensor=None,
+            include_top=False, pooling='avg', classes=1000)
 
         return backbone_model
 
