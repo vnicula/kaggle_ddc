@@ -192,9 +192,8 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        # if CMDLINE_ARGUMENTS.model_name == 'facenet':
-        #     # optimizer = tfa.optimizers.Lookahead(
-        #     #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+        if CMDLINE_ARGUMENTS.model_name == 'facenet':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
         # else:
         # NOTE start simple for pretrained nets
@@ -208,6 +207,14 @@ def compile_model(model, mode, lr):
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
     return model
+
+
+def create_onemil_model(input_shape, mode):
+
+    one_mil = featx.OneMIL(input_shape)
+    model = one_mil.model
+
+    return model, None, [0]
 
 
 def create_facenet_model(input_shape, mode):
@@ -228,7 +235,7 @@ def create_facenet_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=input_tensor, outputs=net)
 
-    return model, backbone_model, [423, 407, 391, 375, 343, 0]
+    return model, backbone_model, [423, 407, 375, 327, 144, 0]
 
 
 def create_vggface_model(input_shape, mode):
@@ -292,8 +299,8 @@ def create_model(model_name, input_shape, mode):
     #     return create_meso_model(input_shape, mode)
     # if model_name == 'meso5':
     #     return create_meso5_model(input_shape, mode)
-    # if model_name == 'onemil':
-    #     return create_onemil_model(input_shape, mode)
+    if model_name == 'onemil':
+        return create_onemil_model(input_shape, mode)
     # if model_name == 'xception':
     #     return create_xception_model(input_shape, mode)
     # if model_name == 'resnet':
@@ -358,15 +365,16 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
         CMDLINE_ARGUMENTS.train_dir, is_training=True, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=False, pair=is_pair)
     eval_dataset = input_dataset(
         CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=True, pair=is_pair)
-
-    print(backbone_model.summary())
+    if backbone_model is not None:
+        print(backbone_model.summary())
     val_loss = np.Inf
     best_weights = model.get_weights()
     dataset_name = 'paired ' if is_pair else 'unpaired'
     print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
 
     for i, li in enumerate(layer_index):
-        freeze_first_n(backbone_model, li)
+        if backbone_model is not None:
+            freeze_first_n(backbone_model, li)
         print_trainable_summary(model)
         lr = float(CMDLINE_ARGUMENTS.lr) * (0.9 ** i)
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
