@@ -274,7 +274,25 @@ def create_resface_model(input_shape, mode):
     return model, backbone_model, [174, 141, 79, 37, 0]
 
 
-def create_efficientnet_model(input_shape, mode):
+def create_xception_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
+    print('Loading xception weights from: ', weights)
+    backbone_model = Xception(weights=weights, input_shape=input_shape, 
+        include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.5)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [126, 0]
+
+
+def create_efficientnetb2_model(input_shape, mode):
 
     weights = None
     if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
@@ -292,6 +310,42 @@ def create_efficientnet_model(input_shape, mode):
     return model, backbone_model, [332, 329, 301, 228, 170, 112, 0]
 
 
+def create_efficientnetb3_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b3_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB3(weights=weights, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [0]
+
+
+def create_efficientnetb4_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b4_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB4(weights=weights, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [0]
+
+
 def create_model(model_name, input_shape, mode):
     # if model_name == 'mobilenet':
     #     return create_mobilenet_model(input_shape, mode)
@@ -301,12 +355,16 @@ def create_model(model_name, input_shape, mode):
     #     return create_meso5_model(input_shape, mode)
     if model_name == 'onemil':
         return create_onemil_model(input_shape, mode)
-    # if model_name == 'xception':
-    #     return create_xception_model(input_shape, mode)
+    if model_name == 'xception':
+        return create_xception_model(input_shape, mode)
     # if model_name == 'resnet':
     #     return create_resnet_model(input_shape, mode)
-    if model_name == 'efficientnet':
-        return create_efficientnet_model(input_shape, mode)
+    if model_name == 'efficientnetb2':
+        return create_efficientnetb2_model(input_shape, mode)
+    if model_name == 'efficientnetb3':
+        return create_efficientnetb3_model(input_shape, mode)
+    if model_name == 'efficientnetb4':
+        return create_efficientnetb3_model(input_shape, mode)
     if model_name == 'facenet':
         return create_facenet_model(input_shape, mode)
     if model_name == 'vggface':
@@ -453,11 +511,12 @@ def main():
                 print('\nLoading weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
                 model.load_weights(args.load)
-                load_file_name, _ = os.path.splitext(os.path.basename(args.load))
-                phase = load_file_name.split('_')[-1]
-                load_li = int(load_file_name.split('_')[-3][2:])
-                phase_layer_index[phase] = layer_index[layer_index.index(load_li):]
-                print('Loaded phase: %s, layer index: %s' % (phase, load_li))
+                if args.mode == 'train':
+                    load_file_name, _ = os.path.splitext(os.path.basename(args.load))
+                    phase = load_file_name.split('_')[-1]
+                    load_li = int(load_file_name.split('_')[-3][2:])
+                    phase_layer_index[phase] = layer_index[layer_index.index(load_li):]
+                    print('Loaded phase: %s, layer index: %s' % (phase, load_li))
             else:
                 print('\nTraining model from scratch.')
 
