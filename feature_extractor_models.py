@@ -2,7 +2,7 @@ import tensorflow as tf
 import keras_utils
 
 import efficientnet.tfkeras
-from efficientnet.tfkeras import EfficientNet, EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3, EfficientNetB4
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
@@ -190,14 +190,42 @@ class OneMIL():
         self.model = self.create_model()
 
     def backbone(self, input_shape, model_name):
-        weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-        print('Loading efficientnet weights from: ', weights)
-        backbone_model = EfficientNet(1.0, 1.0, 224, 0.2,
-            model_name=model_name,
-            weights=weights, input_shape=input_shape, input_tensor=None,
-            include_top=False, pooling='avg', classes=1000)
+        # NOTE effnet doesnt expose model name and cannot reuse model with same name
+        # ERROR ValueError: The name "efficientnet-b0" is used 4 times in the model. All layer names should be unique.
+        # TODO patch effnet to expose model name
 
-        return backbone_model
+        # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        # print('Loading efficientnet weights from: ', weights)
+        # backbone_model = EfficientNet(1.0, 1.0, 224, 0.2,
+        #     model_name=model_name,
+        #     weights=weights, input_shape=input_shape, input_tensor=None,
+        #     include_top=False, pooling='avg', classes=1000)
+
+        X_input = tf.keras.layers.Input(shape=input_shape)
+        X = tf.keras.layers.Conv2D(filters=num_filters,
+                                kernel_size=(7, 7),
+                                strides=2,
+                                padding='same')(X_input)
+        X = tf.keras.layers.BatchNormalization()(X)
+        X = tf.keras.layers.ELU()(X)
+        X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
+                                    padding='same')(X)
+
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=1)
+
+        X = tf.keras.layers.GlobalAveragePooling2D()(X)
+
+        return tf.keras.models.Model(inputs=X_input, outputs=X)
 
     def create_mil_models(self):
         self.left_up_model = self.backbone(self.mil_input_shape, 'upperb')
