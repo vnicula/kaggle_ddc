@@ -198,7 +198,8 @@ if __name__ == '__main__':
 
     track_cache = {}
 
-    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=20, 
+    # TODO check keep all = True
+    detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=constants.MIN_FACE_SIZE, 
         post_process=False, keep_all=False, select_largest=False)
 
     dirs = glob.glob(args.input_dirs)
