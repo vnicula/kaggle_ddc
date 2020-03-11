@@ -184,29 +184,25 @@ class OneMIL():
         self.mil_input_shape = (input_shape[0] // 2, input_shape[1] // 2, input_shape[2])
         self.mil_input_height = self.mil_input_shape[0]
         self.mil_input_width = self.mil_input_shape[1]
-        self.full_model = self.backbone(input_shape)
-        self.full_model.name = 'full'
+        self.full_model = self.backbone(input_shape, 'full')
         self.classifier = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))
         self.create_mil_models()
         self.model = self.create_model()
 
-    def backbone(self, input_shape):
+    def backbone(self, input_shape, model_name):
         weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
         print('Loading efficientnet weights from: ', weights)
         backbone_model = EfficientNetB0(weights=weights, input_shape=input_shape,
-                                        include_top=False, pooling='avg')
+            include_top=False, pooling='avg', model_name=model_name)
 
         return backbone_model
 
     def create_mil_models(self):
-        self.left_up_model = self.backbone(self.mil_input_shape)
-        self.left_up_model.name = 'upperb'
+        self.left_up_model = self.backbone(self.mil_input_shape, 'upperb')
         self.right_up_model = self.left_up_model
-        self.left_down_model = self.backbone(self.mil_input_shape)
-        self.left_down_model.name = 'lowerb'
+        self.left_down_model = self.backbone(self.mil_input_shape, 'lowerb')
         self.right_down_model = self.left_down_model
-        self.center_model = self.backbone(self.mil_input_shape)
-        self.center_model.name = 'centerb'
+        self.center_model = self.backbone(self.mil_input_shape, 'centerb')
 
     def create_model(self):
 
