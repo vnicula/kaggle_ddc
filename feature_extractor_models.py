@@ -185,6 +185,7 @@ class OneMIL():
         self.mil_input_height = self.mil_input_shape[0]
         self.mil_input_width = self.mil_input_shape[1]
         self.full_model = self.backbone(input_shape)
+        self.full_model.name = 'full'
         self.classifier = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))
         self.create_mil_models()
         self.model = self.create_model()
@@ -199,10 +200,13 @@ class OneMIL():
 
     def create_mil_models(self):
         self.left_up_model = self.backbone(self.mil_input_shape)
+        self.left_up_model.name = 'upperb'
         self.right_up_model = self.left_up_model
         self.left_down_model = self.backbone(self.mil_input_shape)
+        self.left_down_model.name = 'lowerb'
         self.right_down_model = self.left_down_model
         self.center_model = self.backbone(self.mil_input_shape)
+        self.center_model.name = 'centerb'
 
     def create_model(self):
 
