@@ -192,12 +192,13 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet':
+        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet' or CMDLINE_ARGUMENTS.model_name == 'onemil':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
         # else:
         # NOTE start simple for pretrained nets
-        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        else:
+            optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
         label_smoothing=0.025
@@ -364,7 +365,7 @@ def create_model(model_name, input_shape, mode):
     if model_name == 'efficientnetb3':
         return create_efficientnetb3_model(input_shape, mode)
     if model_name == 'efficientnetb4':
-        return create_efficientnetb3_model(input_shape, mode)
+        return create_efficientnetb4_model(input_shape, mode)
     if model_name == 'facenet':
         return create_facenet_model(input_shape, mode)
     if model_name == 'vggface':
@@ -530,18 +531,14 @@ def main():
                 val_loss_u = fit_with_schedule(model, backbone_model, phase_layer_index['u'], False)
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
-    # print(next(iter(eval_dataset)))
-    # fractions, counts = class_fractions(eval_dataset)
-    # print('Eval dataset class counts {} and fractions {}: '.format(counts, fractions))
-
-    if args.mode == 'eval':
-        eval_dataset = input_dataset(
-            args.eval_dir, is_training=False, batch_size=batch_size,
-            cache=False,
-            pair=False
-        )
-        compile_model(model, CMDLINE_ARGUMENTS.mode, CMDLINE_ARGUMENTS.lr)
-        model.evaluate(eval_dataset)
+            elif args.mode == 'eval':
+                eval_dataset = input_dataset(
+                    args.eval_dir, is_training=False, batch_size=batch_size,
+                    cache=False,
+                    pair=False
+                )
+                compile_model(model, args.mode, args.lr)
+                model.evaluate(eval_dataset)
 
     if args.save == 'True':
         model_file_name = args.mode + '_tt_full_%s_model.h5' % model_name
