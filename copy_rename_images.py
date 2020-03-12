@@ -9,7 +9,8 @@ all_files = glob.glob(sys.argv[1])
 
 for image_file in tqdm.tqdm(all_files):
     dir_name = os.path.dirname(image_file)
-    part_name = dir_name.split('/')[-3].split('_')[-1]
+    # part_name = dir_name.split('/')[-3].split('_')[-1]
+    part_name = dir_name.split('/')[-1]
     file_name = os.path.basename(image_file)
     newname = part_name + "_" + file_name
     # copy the file into the new directory

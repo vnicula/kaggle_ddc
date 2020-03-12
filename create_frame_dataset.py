@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
     # TODO check keep all = True
     detector = MTCNN(device=args.device, margin=constants.MARGIN, min_face_size=constants.MIN_FACE_SIZE, 
-        post_process=False, keep_all=False, select_largest=False)
+        post_process=False, keep_all=True, select_largest=False)
 
     dirs = glob.glob(args.input_dirs)
     label = args.label
