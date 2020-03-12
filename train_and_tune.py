@@ -293,6 +293,42 @@ def create_xception_model(input_shape, mode):
     return model, backbone_model, [132, 126, 106, 76, 26, 0]
 
 
+def create_efficientnetb0_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB0(weights=weights, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.2)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [230, 227, 214, 113, 0]
+
+
+def create_efficientnetb1_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b1_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB1(weights=weights, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, backbone_model, [332, 329, 301, 228, 170, 112, 0]
+
+
 def create_efficientnetb2_model(input_shape, mode):
 
     weights = None
@@ -360,6 +396,10 @@ def create_model(model_name, input_shape, mode):
         return create_xception_model(input_shape, mode)
     # if model_name == 'resnet':
     #     return create_resnet_model(input_shape, mode)
+    if model_name == 'efficientnetb0':
+        return create_efficientnetb0_model(input_shape, mode)
+    if model_name == 'efficientnetb1':
+        return create_efficientnetb1_model(input_shape, mode)
     if model_name == 'efficientnetb2':
         return create_efficientnetb2_model(input_shape, mode)
     if model_name == 'efficientnetb3':
@@ -431,6 +471,7 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
         print(backbone_model.summary())
     val_loss = np.Inf
     best_weights = model.get_weights()
+    best_weights_info = 'li: %d, epoch: %d' % (layer_index[0], 0)
     dataset_name = 'paired ' if is_pair else 'unpaired'
     print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
 
@@ -451,12 +492,14 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
             val_loss = phase_val_loss
             print('\nOn li %d val_loss has improved to %f, backing up best weights.' % (li, val_loss))
             best_weights = model.get_weights()
+            best_weights_info = 'li: %d, epoch: %d' % (li, completed_epochs)
             if completed_epochs == CMDLINE_ARGUMENTS.epochs:
                 print('\nWarning: Not early stopped, possibly not using the best weights.')
         else:
             print('Unfreezing all layers after %d did not improve val_loss, loading best weights.' % li)
             model.set_weights(best_weights)
 
+    print('Training done, set best weights from %s' % best_weights_info)
     model.set_weights(best_weights)
     
     return val_loss
@@ -529,8 +572,10 @@ def main():
                 if phase == 'p':
                     val_loss_p = fit_with_schedule(model, backbone_model, phase_layer_index['p'], True)
                     best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
+                    best_model_p_name_weights = args.mode + '_tt_p_%s_model_weights.h5' % model_name
                     print('Saving best model on paired dset to %s with val_loss paired %f' % (best_model_p_name, val_loss_p))
                     model.save(os.path.join(output_dir, best_model_p_name))
+                    model.save_weights(os.path.join(output_dir, best_model_p_name_weights))
                 val_loss_u = fit_with_schedule(model, backbone_model, phase_layer_index['u'], False)
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
