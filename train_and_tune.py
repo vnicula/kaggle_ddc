@@ -454,7 +454,8 @@ def callbacks_list(layer_index, is_pair):
             os.path.join(output_dir, 'training_log_%s_li_%d_%s.csv' % (model_name, layer_index, phase))),
         tf.keras.callbacks.TensorBoard(
             log_dir=os.path.join(output_dir, 'tf_train_%s_li_%d_%s' % (model_name, layer_index, phase)),
-            profile_batch='100, 110'),
+            # profile_batch='100, 110'
+        ),
     ]
 
     return callbacks
