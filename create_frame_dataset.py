@@ -13,7 +13,10 @@ import tqdm
 
 from facenet_pytorch import MTCNN
 
-REAL_TO_FAKE_RATIO = 3
+# REAL_TO_FAKE_RATIO = 3
+# V2 version of the dataset turned on multitrack fakes and sampled less reals
+# since there are enough reals in voxceleb
+REAL_TO_FAKE_RATIO = 2
 KEEP_ASPECT = False
 MIN_FACE_DIFF = 5
 
@@ -37,10 +40,10 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
         track_cache[real_vid_name] = tracks
     
     real_faces = [item for sublist in real_faces for item in sublist]
-    if len(tracks) > 1:
-        # exclude fakes with two faces - there's no good way to identify the fake track
-        # print(real_faces)
-        return random.sample(real_faces, min(len(real_faces), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
+    # if len(tracks) > 1:
+    #     # exclude fakes with two faces - there's no good way to identify the fake track
+    #     # print(real_faces)
+    #     return random.sample(real_faces, min(len(real_faces), REAL_TO_FAKE_RATIO*max_fakes)), [], real_detection
     
     if len(real_faces) > 0:
         fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale)
@@ -148,14 +151,14 @@ def imwrite_faces(output_dir, vid_file, faces, face_size, keep_aspect=KEEP_ASPEC
         cv2.imwrite(file_name, cv2.cvtColor(resized_face, cv2.COLOR_RGB2BGR))
 
 
-def run(detector, input_dir, max_fakes, face_size):
+def run(detector, input_dir, max_fakes, face_size, output_prefix):
     with open(os.path.join(input_dir, constants.META_DATA)) as json_file:
     # with open(os.path.join('.', 'all_metadata.json')) as json_file:
         label_data = json.load(json_file)
 
-    writing_dir_0 = os.path.join(input_dir, str(face_size), '0')
+    writing_dir_0 = os.path.join(input_dir, output_prefix, '0')
     os.makedirs(writing_dir_0, exist_ok=True)
-    writing_dir_1 = os.path.join(input_dir, str(face_size), '1')
+    writing_dir_1 = os.path.join(input_dir, output_prefix, '1')
     os.makedirs(writing_dir_1, exist_ok=True)
 
     track_cache = {}
@@ -172,9 +175,9 @@ def run(detector, input_dir, max_fakes, face_size):
                 imwrite_faces(writing_dir_1, file_name, selected_fake_faces, face_size)
 
 
-def run_label(detector, input_dir, max_faces, label, face_size):
+def run_label(detector, input_dir, max_faces, label, face_size, output_prefix):
 
-    writing_dir = os.path.join(input_dir, str(face_size), label)
+    writing_dir = os.path.join(input_dir, output_prefix, label)
     os.makedirs(writing_dir, exist_ok=True)
     file_list = glob.glob(input_dir + '/*.mp4')
 
@@ -190,9 +193,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dirs', type=str)
+    parser.add_argument('--output_prefix', type=str, default=256)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--label', type=str, default='json')
-    parser.add_argument('--max_faces', type=int, default=5)
+    parser.add_argument('--max_faces', type=int, default=7)
     parser.add_argument('--face_size', type=int, default=constants.TRAIN_FACE_SIZE)
     args = parser.parse_args()
 
@@ -222,9 +226,9 @@ if __name__ == '__main__':
 
     for dir in dirs:
         if 'json' in label:
-            run(detector, dir, args.max_faces, face_size)
+            run(detector, dir, args.max_faces, face_size, args.output_prefix)
         else:
-            run_label(detector, dir, args.max_faces, label, face_size)
+            run_label(detector, dir, args.max_faces, label, face_size, ars.output_prefix)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
