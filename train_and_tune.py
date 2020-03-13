@@ -485,7 +485,8 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
         print('\nStep %d/%d with layer index %d, best val_loss %f, starting training with lr=%f\n' %
             (i+1, len(layer_index), li, val_loss, lr))
-        hfit = model.fit(train_dataset, epochs=CMDLINE_ARGUMENTS.epochs,  # class_weight=class_weight,
+        train_for_epochs = 2 if i == 0 else CMDLINE_ARGUMENTS.epochs
+        hfit = model.fit(train_dataset, epochs=train_for_epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
         phase_val_loss = min(hfit.history['val_loss'])
