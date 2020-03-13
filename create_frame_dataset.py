@@ -18,7 +18,7 @@ from facenet_pytorch import MTCNN
 # since there are enough reals in voxceleb
 REAL_TO_FAKE_RATIO = 2
 KEEP_ASPECT = False
-MIN_FACE_DIFF = 5
+MIN_FACE_DIFF = 4.5
 
 def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes):
     real_imgs, real_imrs, real_scale = process_utils.parse_vid(real_vid_path, constants.MAX_DETECTION_SIZE,
@@ -64,25 +64,32 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
             # cv2.imwrite('fake_face_bug_%d.jpg' %k, cv2.cvtColor(fake_face, cv2.COLOR_RGB2BGR))
             img_diffs.append(np.mean(cv2.absdiff(real_face, fake_face)))
 
-        real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
-            zip(real_faces, fake_faces, img_diffs),
-            key=lambda pair: pair[2],
-            reverse=True)
-            )
-        )
+        sorted_indices = np.flip(np.argsort(img_diffs))
+        # real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
+        #     zip(real_faces, fake_faces, img_diffs),
+        #     key=lambda pair: pair[2],
+        #     reverse=True)
+        #     )
+        # )
 
         selected_fake_faces = []
-        for fake_face, face_diff in zip(fake_faces, img_diffs):
-            print('face diff: ', face_diff)
+        selected_real_faces = []
+        for i in sorted_indices:
+            face_diff = img_diffs[i]
             if len(selected_fake_faces) == 0:
-                selected_fake_faces.append(fake_face)
-            elif face_diff > MIN_FACE_DIFF:
-                selected_fake_faces.append(fake_face)
-            if len(selected_fake_faces) >= max_fakes or face_diff <= MIN_FACE_DIFF:
+                selected_fake_faces.append((fake_faces[i], i))
+                selected_real_faces.append((real_faces[i], i))
+            elif face_diff > MIN_FACE_DIFF and len(selected_fake_faces) < max_fakes:
+                selected_fake_faces.append((fake_faces[i], i))
+                selected_real_faces.append((real_faces[i], i))
+            elif len(selected_real_faces) < REAL_TO_FAKE_RATIO*max_fakes:
+                selected_real_faces.append((real_faces[i], i))
+            else:
                 break
-
+            print('face diff: %f, real: %d, fake: %d' % (face_diff, len(selected_real_faces), len(selected_fake_faces)))
+        
         # NOTE these are not resized to same size
-        return real_faces[:REAL_TO_FAKE_RATIO*max_fakes], selected_fake_faces, real_detection
+        return selected_real_faces, selected_fake_faces, real_detection
 
     return [], [], real_detection    
 
@@ -95,8 +102,11 @@ def process_single(detector, vid_path, label, max_faces):
             scale, 0, keep_tracks=1)
     
     faces = [item for sublist in faces for item in sublist]
+    faces_indexes = []
+    for i, face in enumerate(faces):
+        faces_indexes.append((face, i))
     
-    return random.sample(faces, min(len(faces), max_faces))
+    return random.sample(faces_indexes, min(len(faces_indexes), max_faces))
 
 
 def pad_images_to_same_size(images):
@@ -132,6 +142,8 @@ def imwrite_tiled_faces(real_faces, fake_faces):
     assert len(real_faces) >= len(fake_faces)
     masks = []
     real_faces = real_faces[:len(fake_faces)]
+    real_faces, _ = zip(*real_faces)
+    fake_faces, _ = zip(*fake_faces)
     for i in range(len(fake_faces)):
         im_real = real_faces[i]
         im_fake = fake_faces[i]
@@ -154,12 +166,12 @@ def imwrite_tiled_faces(real_faces, fake_faces):
 
 def imwrite_faces(output_dir, vid_file, faces, face_size, keep_aspect=KEEP_ASPECT):
     print(len(faces))
-    for i, face in enumerate(faces):
-        file_name = os.path.join(output_dir, vid_file + '_' + str(i) + '.png')
+    for face in faces:
+        file_name = os.path.join(output_dir, vid_file + '_' + str(face[1]) + '.png')
         if keep_aspect:
-            resized_face = process_utils.square_resize(face, face_size)
+            resized_face = process_utils.square_resize(face[0], face_size)
         else:
-            resized_face = cv2.resize(face, (face_size, face_size), interpolation = cv2.INTER_LINEAR)
+            resized_face = cv2.resize(face[0], (face_size, face_size), interpolation = cv2.INTER_LINEAR)
         cv2.imwrite(file_name, cv2.cvtColor(resized_face, cv2.COLOR_RGB2BGR))
 
 
@@ -225,15 +237,16 @@ if __name__ == '__main__':
     # # DEBUG stuff
     # # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
     # # print(tracks)
-    # # DEBUG stuff
+    # DEBUG stuff
     # real_faces, fake_faces, real_detection = process_pair(
     #     detector,
-    #     "../dset/train/dfdc_train_part_45/stdavraahk.mp4",
-    #     "../dset/train/dfdc_train_part_45/mwizcjywkd.mp4",
+    #     "../dset/train/dfdc_train_part_10/rcttjovqdv.mp4",
+    #     "../dset/train/dfdc_train_part_10/aajtsolpjq.mp4",
     #     track_cache,
     #     args.max_faces,
     # )
-    # # print(real_faces, fake_faces)
+    # _, fake_indices = zip(*fake_faces)
+    # print(fake_indices)
     # imwrite_tiled_faces(real_faces, fake_faces)
 
     for dir in dirs:
