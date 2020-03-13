@@ -253,7 +253,7 @@ if __name__ == '__main__':
         if 'json' in label:
             run(detector, dir, args.max_faces, face_size, args.output_prefix)
         else:
-            run_label(detector, dir, args.max_faces, label, face_size, ars.output_prefix)
+            run_label(detector, dir, args.max_faces, label, face_size, args.output_prefix)
 
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
