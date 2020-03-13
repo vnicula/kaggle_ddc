@@ -26,6 +26,13 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
     fake_imgs, fake_imrs, fake_scale = process_utils.parse_vid(fake_vid_path, constants.MAX_DETECTION_SIZE, 
         constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, constants.SKIP_INITIAL_SEC)
     assert real_scale == fake_scale
+    if len(real_imgs) != len(fake_imgs):
+        print('Truncating pair real: %s, fake: %s, they cannot be matched frame by frame' % (real_vid_path, fake_vid_path))
+        print('Frames in real: %d, fake: %d' % (len(real_imgs), len(fake_imgs)))
+        min_length = min(len(real_imgs), len(fake_imgs))
+        real_imgs = real_imgs[:min_length]
+        fake_imgs = fake_imgs[:min_length]
+
     real_vid_name = os.path.basename(real_vid_path)
     if real_vid_name in track_cache:
         print('Found {} in track cache, skipping detection.'.format(real_vid_name))
@@ -37,9 +44,11 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
         real_faces, tracks = process_utils.detect_faces_bbox(detector, 0, real_imgs, real_imrs, 256, 
             real_scale, 0, keep_tracks=2)
         print('Adding {} to track cache.'.format(real_vid_name))
+        # print(tracks)
         track_cache[real_vid_name] = tracks
     
     real_faces = [item for sublist in real_faces for item in sublist]
+
     # if len(tracks) > 1:
     #     # exclude fakes with two faces - there's no good way to identify the fake track
     #     # print(real_faces)
@@ -49,7 +58,10 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
         fake_faces = process_utils.get_faces_from_tracks(fake_imgs, tracks, real_scale)
         fake_faces = [item for sublist in fake_faces for item in sublist]
         img_diffs = []
-        for real_face, fake_face in zip(real_faces, fake_faces):
+        for k, (real_face, fake_face) in enumerate(zip(real_faces, fake_faces)):
+            # print(real_face.shape, fake_face.shape)
+            # cv2.imwrite('real_face_bug_%d.jpg' %k, cv2.cvtColor(real_face, cv2.COLOR_RGB2BGR))
+            # cv2.imwrite('fake_face_bug_%d.jpg' %k, cv2.cvtColor(fake_face, cv2.COLOR_RGB2BGR))
             img_diffs.append(np.mean(cv2.absdiff(real_face, fake_face)))
 
         real_faces, fake_faces, img_diffs = (list(x) for x in zip(*sorted(
@@ -210,18 +222,18 @@ if __name__ == '__main__':
     label = args.label
     face_size = args.face_size
 
-    # DEBUG stuff
-    # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
-    # print(tracks)
-    # DEBUG stuff
+    # # DEBUG stuff
+    # # tracks = process_single(detector, '/raid/scratch/tf_train/dset/dfdc_train_part_58/549_531.mp4', 5, 1)
+    # # print(tracks)
+    # # DEBUG stuff
     # real_faces, fake_faces, real_detection = process_pair(
     #     detector,
-    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/ldtgofdaqg.mp4",
-    #     "/raid/scratch/tf_train/dset/dfdc_train_part_0/kfgdvqjuzu.mp4",
+    #     "../dset/train/dfdc_train_part_45/stdavraahk.mp4",
+    #     "../dset/train/dfdc_train_part_45/mwizcjywkd.mp4",
     #     track_cache,
-    #     5,
+    #     args.max_faces,
     # )
-    # print(real_faces, fake_faces)
+    # # print(real_faces, fake_faces)
     # imwrite_tiled_faces(real_faces, fake_faces)
 
     for dir in dirs:
