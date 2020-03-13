@@ -185,7 +185,8 @@ class OneMIL():
         self.mil_input_height = self.mil_input_shape[0]
         self.mil_input_width = self.mil_input_shape[1]
         self.full_model = self.backbone(input_shape, 'full')
-        self.classifier = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))
+        # self.classifier = Dense(32, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.02))
+        self.classifier = Dense(units=64, activation='relu')
         self.create_mil_models()
         self.model = self.create_model()
 
@@ -194,38 +195,23 @@ class OneMIL():
         # ERROR ValueError: The name "efficientnet-b0" is used 4 times in the model. All layer names should be unique.
         # TODO patch effnet to expose model name
 
-        # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-        # print('Loading efficientnet weights from: ', weights)
-        # backbone_model = EfficientNet(1.0, 1.0, 224, 0.2,
-        #     model_name=model_name,
-        #     weights=weights, input_shape=input_shape, input_tensor=None,
-        #     include_top=False, pooling='avg', classes=1000)
+        weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        print('Loading efficientnet weights from: ', weights)
+        backbone_model = EfficientNetB0(
+            model_name=model_name,
+            weights=weights, input_shape=input_shape,
+            include_top=False, pooling='avg')
+        N = 227
+        print('\nFreezing first %d %s layers!' % (N, model_name))
+        for i, layer in enumerate(backbone_model.layers):
+            if i < N:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            print(i, layer.name, layer.trainable)
+        
+        return backbone_model
 
-        X_input = tf.keras.layers.Input(shape=input_shape)
-        X = tf.keras.layers.Conv2D(filters=num_filters,
-                                kernel_size=(7, 7),
-                                strides=2,
-                                padding='same')(X_input)
-        X = tf.keras.layers.BatchNormalization()(X)
-        X = tf.keras.layers.ELU()(X)
-        X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
-                                    padding='same')(X)
-
-        X = residual_unit(X, filter_num=num_filters, stride_num=1)
-        X = residual_unit(X, filter_num=num_filters, stride_num=1)
-
-        X = residual_unit(X, filter_num=2*num_filters, stride_num=2)
-        X = residual_unit(X, filter_num=2*num_filters, stride_num=1)
-
-        X = residual_unit(X, filter_num=4*num_filters, stride_num=2)
-        X = residual_unit(X, filter_num=4*num_filters, stride_num=1)
-
-        X = residual_unit(X, filter_num=8*num_filters, stride_num=2)
-        X = residual_unit(X, filter_num=8*num_filters, stride_num=1)
-
-        X = tf.keras.layers.GlobalAveragePooling2D()(X)
-
-        return tf.keras.models.Model(inputs=X_input, outputs=X)
 
     def create_mil_models(self):
         self.left_up_model = self.backbone(self.mil_input_shape, 'upperb')
@@ -284,17 +270,20 @@ class OneMIL():
 
         mil_out = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
         mil_out = TimeDistributed(Dropout(0.25))(mil_out)
-        mil_out = TimeDistributed(self.classifier)(mil_out)
-        mil_out = GlobalMaxPool1D()(mil_out)
+        # mil_out = TimeDistributed(self.classifier)(mil_out)
+        mil_out = TimeDistributed(Dense(units=32, activation='relu'))(mil_out)
+        mil_out = keras_utils.SeqWeightedAttention()(mil_out)
+        # mil_out = GlobalMaxPool1D()(mil_out)
 
 
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
         # mil_out = keras_utils.SeqWeightedAttention()(all_mil_outs)
-        # mil_out = Dropout(0.5)(mil_out)
-        # mil_out = tf.keras.layers.Dense(units=1, activation=None, kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
+        # mil_out = Dropout(0.25)(mil_out)
+        mil_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
 
         full_out = Dropout(0.25)(full_out)
-        full_out = self.classifier(full_out)
+        full_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(full_out)
+        # full_out = self.classifier(full_out)
         
         out = tf.keras.layers.Add()([mil_out, full_out]) / 2.0
 
