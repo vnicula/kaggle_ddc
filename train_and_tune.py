@@ -192,10 +192,11 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet' or CMDLINE_ARGUMENTS.model_name == 'onemil':
+        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet' \
+            or CMDLINE_ARGUMENTS.model_name == 'onemil':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-        #     optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
-        # else:
+        elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1':
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-3, momentum=0.9)
         # NOTE start simple for pretrained nets
         else:
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
