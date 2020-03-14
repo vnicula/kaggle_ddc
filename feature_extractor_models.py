@@ -184,7 +184,7 @@ class OneMIL():
         self.mil_input_shape = (input_shape[0] // 2, input_shape[1] // 2, input_shape[2])
         self.mil_input_height = self.mil_input_shape[0]
         self.mil_input_width = self.mil_input_shape[1]
-        self.full_model = self.backbone(input_shape, 'full')
+        # self.full_model = self.backbone(input_shape, 'full')
         # self.classifier = Dense(32, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.02))
         self.classifier = Dense(units=64, activation='relu')
         self.create_mil_models()
@@ -266,7 +266,7 @@ class OneMIL():
         left_down_out = self.left_down_model(left_down_input)
         right_down_out = self.right_down_model(right_down_input)
         center_out = self.center_model(center_input)
-        full_out = self.full_model(x_input)
+        # full_out = self.full_model(x_input)
 
         mil_out = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
         mil_out = TimeDistributed(Dropout(0.25))(mil_out)
@@ -281,10 +281,11 @@ class OneMIL():
         # mil_out = Dropout(0.25)(mil_out)
         mil_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
 
-        full_out = Dropout(0.25)(full_out)
-        full_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(full_out)
+        # full_out = Dropout(0.25)(full_out)
+        # full_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(full_out)
         # full_out = self.classifier(full_out)
         
-        out = tf.keras.layers.Add()([mil_out, full_out]) / 2.0
+        # out = tf.keras.layers.Add()([mil_out, full_out]) / 2.0
+        out = mil_out
 
         return Model(inputs=x_input, outputs=out)

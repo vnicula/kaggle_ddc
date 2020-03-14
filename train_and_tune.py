@@ -196,8 +196,7 @@ def compile_model(model, mode, lr):
             or CMDLINE_ARGUMENTS.model_name == 'onemil':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1':
-            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-3, momentum=0.9)
-        # NOTE start simple for pretrained nets
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
         else:
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
