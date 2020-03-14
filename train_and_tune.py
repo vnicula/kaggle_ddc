@@ -81,7 +81,7 @@ def preprocess_img(img, label):
     elif CMDLINE_ARGUMENTS.model_name == 'facenet':
         # TODO: incorrect as it doesn't use their dataset channel means
         img = tf.image.per_image_standardization(img)
-    else:
+    else: # CMDLINE_ARGUMENTS.model_name == 'onemil'
         # [0., 1.)
         img = tf.image.convert_image_dtype(img, tf.float32)
 
@@ -192,11 +192,12 @@ def compile_model(model, mode, lr):
 
     optimizer = tf.keras.optimizers.SGD(lr)
     if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet' \
-            or CMDLINE_ARGUMENTS.model_name == 'onemil':
+        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1':
-            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
+        elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'onemil':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
         else:
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
@@ -214,8 +215,10 @@ def create_onemil_model(input_shape, mode):
 
     one_mil = featx.OneMIL(input_shape)
     model = one_mil.model
-    backbone_models = [one_mil.left_up_model, one_mil.center_model, one_mil.left_down_model]
-    return model, backbone_models, [230, 214, 113, 0]
+    backbone_models = [one_mil.left_up_model, one_mil.right_up_model, one_mil.center_model, one_mil.left_down_model, one_mil.right_down_model]
+    # backbone_models = [one_mil.full_model]
+    # return model, backbone_models, [227, 214, 113, 0]
+    return model, backbone_models, [0]
 
 
 def create_facenet_model(input_shape, mode):
@@ -339,7 +342,7 @@ def create_efficientnetb2_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
@@ -475,7 +478,7 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
     val_loss = np.Inf
     best_weights = model.get_weights()
     best_weights_info = 'li: %d, epoch: %d' % (layer_index[0], 0)
-    dataset_name = 'paired ' if is_pair else 'unpaired'
+    dataset_name = 'paired' if is_pair else 'unpaired'
     print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
 
     for i, li in enumerate(layer_index):
@@ -486,7 +489,7 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
         print('\nStep %d/%d with layer index %d, best val_loss %f, starting training with lr=%f\n' %
             (i+1, len(layer_index), li, val_loss, lr))
-        train_for_epochs = 3 if i == 0 else CMDLINE_ARGUMENTS.epochs
+        train_for_epochs = 3 if ((i == 0) and (CMDLINE_ARGUMENTS.model_name != 'onemil')) else CMDLINE_ARGUMENTS.epochs
         hfit = model.fit(train_dataset, epochs=train_for_epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))

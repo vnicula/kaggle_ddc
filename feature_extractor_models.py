@@ -6,7 +6,7 @@ from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2,
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Bidirectional, BatchNormalization, Concatenate, Conv2D, Dense, Dropout
-from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D, GlobalMaxPool1D
+from tensorflow.keras.layers import Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D, GlobalMaxPool1D, GlobalAveragePooling1D
 from tensorflow.keras.layers import Input, GRU, LeakyReLU, LSTM, Masking, MaxPooling2D, multiply, Reshape, TimeDistributed
 
 
@@ -186,7 +186,7 @@ class OneMIL():
         self.mil_input_width = self.mil_input_shape[1]
         # self.full_model = self.backbone(input_shape, 'full')
         # self.classifier = Dense(32, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.02))
-        self.classifier = Dense(units=32, activation='relu')
+        # self.classifier = Dense(units=32, activation='relu')
         self.create_mil_models()
         self.model = self.create_model()
 
@@ -195,29 +195,58 @@ class OneMIL():
         # ERROR ValueError: The name "efficientnet-b0" is used 4 times in the model. All layer names should be unique.
         # TODO patch effnet to expose model name
 
-        weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-        print('Loading efficientnet weights from: ', weights)
-        backbone_model = EfficientNetB0(
-            model_name=model_name,
-            weights=weights, input_shape=input_shape,
-            include_top=False, pooling='avg')
-        # N = 214
-        # print('\nFreezing first %d %s layers!' % (N, model_name))
-        # for i, layer in enumerate(backbone_model.layers):
-        #     if i < N:
-        #         layer.trainable = False
-        #     else:
-        #         layer.trainable = True
-        #     print(i, layer.name, layer.trainable)
-        
-        return backbone_model
+        # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+        # print('Loading efficientnet weights from: ', weights)
+        # backbone_model = EfficientNetB0(
+        #     model_name=model_name,
+        #     weights=weights, input_shape=input_shape,
+        #     include_top=False, pooling='avg')
+
+        # out = backbone_model.output
+        # out = Dropout(0.25)(out)
+        # out = Dense(units=1, activation='sigmoid')(out)
+
+        X_input = tf.keras.layers.Input(shape=input_shape)
+        X = tf.keras.layers.Conv2D(filters=num_filters,
+                                kernel_size=(7, 7),
+                                strides=2,
+                                padding='same')(X_input)
+        X = tf.keras.layers.BatchNormalization()(X)
+        X = tf.keras.layers.ELU()(X)
+        X = tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2,
+                                    padding='same')(X)
+
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
+        X = residual_unit(X, filter_num=num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=2*num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=4*num_filters, stride_num=1)
+
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=2)
+        X = residual_unit(X, filter_num=8*num_filters, stride_num=1)
+
+        X = tf.keras.layers.GlobalAveragePooling2D()(X)
+        X = tf.keras.layers.Flatten()(X)
+        X = tf.keras.layers.Dropout(0.5)(X)
+        out = tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(X)
+    
+        model = Model(inputs = X_input, outputs = out)
+
+        return model
 
 
     def create_mil_models(self):
-        self.left_up_model = self.backbone(self.mil_input_shape, 'upperb')
-        self.right_up_model = self.left_up_model
-        self.left_down_model = self.backbone(self.mil_input_shape, 'lowerb')
-        self.right_down_model = self.left_down_model
+        self.left_up_model = self.backbone(self.mil_input_shape, 'upperlb')
+        self.right_up_model = self.backbone(self.mil_input_shape, 'upperrb')
+        # self.right_up_model = self.left_up_model
+
+        self.left_down_model = self.backbone(self.mil_input_shape, 'lowerlb')
+        self.right_down_model = self.backbone(self.mil_input_shape, 'lowerrb')
+        # self.right_down_model = self.left_down_model
+
         self.center_model = self.backbone(self.mil_input_shape, 'centerb')
 
     def create_model(self):
@@ -270,16 +299,16 @@ class OneMIL():
 
         mil_out = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
         # mil_out = TimeDistributed(Dropout(0.25))(mil_out)
-        mil_out = TimeDistributed(self.classifier)(mil_out)
+        # mil_out = TimeDistributed(self.classifier)(mil_out)
         # mil_out = TimeDistributed(Dense(units=32, activation='relu'))(mil_out)
-        mil_out = keras_utils.SeqWeightedAttention()(mil_out)
-        # mil_out = GlobalMaxPool1D()(mil_out)
+        # mil_out = keras_utils.SeqWeightedAttention()(mil_out)
+        mil_out = GlobalAveragePooling1D()(mil_out)
 
 
         # out = keras_utils.SeqSelfAttention(attention_type='multiplicative', attention_activation='sigmoid')(all_outs)
         # mil_out = keras_utils.SeqWeightedAttention()(all_mil_outs)
         # mil_out = Dropout(0.25)(mil_out)
-        mil_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
+        # mil_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(mil_out)
 
         # full_out = Dropout(0.25)(full_out)
         # full_out = Dense(units=1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(full_out)
