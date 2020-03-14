@@ -186,7 +186,7 @@ class OneMIL():
         self.mil_input_width = self.mil_input_shape[1]
         # self.full_model = self.backbone(input_shape, 'full')
         # self.classifier = Dense(32, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.02))
-        self.classifier = Dense(units=64, activation='relu')
+        self.classifier = Dense(units=32, activation='relu')
         self.create_mil_models()
         self.model = self.create_model()
 
@@ -201,14 +201,14 @@ class OneMIL():
             model_name=model_name,
             weights=weights, input_shape=input_shape,
             include_top=False, pooling='avg')
-        N = 227
-        print('\nFreezing first %d %s layers!' % (N, model_name))
-        for i, layer in enumerate(backbone_model.layers):
-            if i < N:
-                layer.trainable = False
-            else:
-                layer.trainable = True
-            print(i, layer.name, layer.trainable)
+        # N = 214
+        # print('\nFreezing first %d %s layers!' % (N, model_name))
+        # for i, layer in enumerate(backbone_model.layers):
+        #     if i < N:
+        #         layer.trainable = False
+        #     else:
+        #         layer.trainable = True
+        #     print(i, layer.name, layer.trainable)
         
         return backbone_model
 
@@ -269,9 +269,9 @@ class OneMIL():
         # full_out = self.full_model(x_input)
 
         mil_out = tf.stack([left_up_out, right_up_out, left_down_out, right_down_out, center_out], axis=1)
-        mil_out = TimeDistributed(Dropout(0.25))(mil_out)
-        # mil_out = TimeDistributed(self.classifier)(mil_out)
-        mil_out = TimeDistributed(Dense(units=32, activation='relu'))(mil_out)
+        # mil_out = TimeDistributed(Dropout(0.25))(mil_out)
+        mil_out = TimeDistributed(self.classifier)(mil_out)
+        # mil_out = TimeDistributed(Dense(units=32, activation='relu'))(mil_out)
         mil_out = keras_utils.SeqWeightedAttention()(mil_out)
         # mil_out = GlobalMaxPool1D()(mil_out)
 
@@ -288,4 +288,7 @@ class OneMIL():
         # out = tf.keras.layers.Add()([mil_out, full_out]) / 2.0
         out = mil_out
 
-        return Model(inputs=x_input, outputs=out)
+        model = Model(inputs=x_input, outputs=out)
+        print(model.summary())
+
+        return model

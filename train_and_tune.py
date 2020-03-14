@@ -214,8 +214,8 @@ def create_onemil_model(input_shape, mode):
 
     one_mil = featx.OneMIL(input_shape)
     model = one_mil.model
-
-    return model, None, [0]
+    backbone_models = [one_mil.left_up_model, one_mil.center_model, one_mil.left_down_model]
+    return model, backbone_models, [230, 214, 113, 0]
 
 
 def create_facenet_model(input_shape, mode):
@@ -236,7 +236,7 @@ def create_facenet_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=input_tensor, outputs=net)
 
-    return model, backbone_model, [423, 407, 375, 327, 144, 0]
+    return model, [backbone_model], [423, 407, 375, 327, 144, 0]
 
 
 def create_vggface_model(input_shape, mode):
@@ -254,7 +254,7 @@ def create_vggface_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [19, 17, 15, 11, 7, 0]
+    return model, [backbone_model], [19, 17, 15, 11, 7, 0]
 
 
 def create_resface_model(input_shape, mode):
@@ -272,7 +272,7 @@ def create_resface_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [174, 141, 79, 37, 0]
+    return model, [backbone_model], [174, 141, 79, 37, 0]
 
 
 def create_xception_model(input_shape, mode):
@@ -290,7 +290,7 @@ def create_xception_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [132, 126, 106, 76, 26, 0]
+    return model, [backbone_model], [132, 126, 106, 76, 26, 0]
 
 
 def create_efficientnetb0_model(input_shape, mode):
@@ -308,7 +308,7 @@ def create_efficientnetb0_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [230, 227, 214, 113, 0]
+    return model, [backbone_model], [230, 227, 214, 113, 0]
 
 
 def create_efficientnetb1_model(input_shape, mode):
@@ -326,7 +326,7 @@ def create_efficientnetb1_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [332, 329, 301, 228, 112, 0]
+    return model, [backbone_model], [332, 329, 301, 228, 112, 0]
 
 
 def create_efficientnetb2_model(input_shape, mode):
@@ -344,7 +344,7 @@ def create_efficientnetb2_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [332, 329, 301, 228, 170, 112, 0]
+    return model, [backbone_model], [332, 329, 301, 228, 170, 112, 0]
 
 
 def create_efficientnetb3_model(input_shape, mode):
@@ -362,7 +362,7 @@ def create_efficientnetb3_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [377, 346, 258, 112, 0]
+    return model, [backbone_model], [377, 346, 258, 112, 0]
 
 
 def create_efficientnetb4_model(input_shape, mode):
@@ -380,7 +380,7 @@ def create_efficientnetb4_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, backbone_model, [467, 464, 436, 318, 142, 0]
+    return model, [backbone_model], [467, 464, 436, 318, 142, 0]
 
 
 def create_model(model_name, input_shape, mode):
@@ -416,15 +416,16 @@ def create_model(model_name, input_shape, mode):
     raise ValueError('Unknown model %s' % model_name)
 
 
-def freeze_first_n(base_model, N):
+def freeze_first_n(base_models, N):
 
     print('\nFreezing first %d %s layers!' % (N, CMDLINE_ARGUMENTS.model_name))
-    for i, layer in enumerate(base_model.layers):
-        if i < N:
-            layer.trainable = False
-        else:
-            layer.trainable = True
-        print(i, layer.name, layer.trainable)
+    for base_model in base_models:
+        for i, layer in enumerate(base_model.layers):
+            if i < N:
+                layer.trainable = False
+            else:
+                layer.trainable = True
+            print(i, layer.name, layer.trainable)
 
 
 def callbacks_list(layer_index, is_pair):
@@ -461,15 +462,16 @@ def callbacks_list(layer_index, is_pair):
     return callbacks
 
 
-def fit_with_schedule(model, backbone_model, layer_index, is_pair):
+def fit_with_schedule(model, backbone_models, layer_index, is_pair):
     assert CMDLINE_ARGUMENTS.mode == 'train', "Trying to call fit with mode %s" % CMDLINE_ARGUMENTS.mode
+    assert type(backbone_models) is list 
 
     train_dataset = input_dataset(
         CMDLINE_ARGUMENTS.train_dir, is_training=True, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=False, pair=is_pair)
     eval_dataset = input_dataset(
         CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=True, pair=is_pair)
-    if backbone_model is not None:
-        print(backbone_model.summary())
+    if backbone_models is not None and len(backbone_models) > 0:
+        print(backbone_models[0].summary())
     val_loss = np.Inf
     best_weights = model.get_weights()
     best_weights_info = 'li: %d, epoch: %d' % (layer_index[0], 0)
@@ -477,14 +479,14 @@ def fit_with_schedule(model, backbone_model, layer_index, is_pair):
     print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
 
     for i, li in enumerate(layer_index):
-        if backbone_model is not None:
-            freeze_first_n(backbone_model, li)
+        if backbone_models is not None:
+            freeze_first_n(backbone_models, li)
         print_trainable_summary(model)
         lr = float(CMDLINE_ARGUMENTS.lr) * (0.9 ** i)
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
         print('\nStep %d/%d with layer index %d, best val_loss %f, starting training with lr=%f\n' %
             (i+1, len(layer_index), li, val_loss, lr))
-        train_for_epochs = 2 if i == 0 else CMDLINE_ARGUMENTS.epochs
+        train_for_epochs = 3 if i == 0 else CMDLINE_ARGUMENTS.epochs
         hfit = model.fit(train_dataset, epochs=train_for_epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
@@ -553,7 +555,7 @@ def main():
 
         with strategy.scope():
             # due to bugs need to load weights for mirrored strategy - cannot load full model
-            model, backbone_model, layer_index = create_model(
+            model, backbone_models, layer_index = create_model(
                 model_name, in_shape, args.mode)
             phase_layer_index = {'p': layer_index, 'u': layer_index}
             if args.load is not None:
@@ -572,13 +574,13 @@ def main():
             if args.mode == 'train':
                 val_loss_p = np.Inf
                 if phase == 'p':
-                    val_loss_p = fit_with_schedule(model, backbone_model, phase_layer_index['p'], True)
+                    val_loss_p = fit_with_schedule(model, backbone_models, phase_layer_index['p'], True)
                     best_model_p_name = args.mode + '_tt_p_%s_model.h5' % model_name
                     best_model_p_name_weights = args.mode + '_tt_p_%s_model_weights.h5' % model_name
                     print('Saving best model on paired dset to %s with val_loss paired %f' % (best_model_p_name, val_loss_p))
                     model.save(os.path.join(output_dir, best_model_p_name))
                     model.save_weights(os.path.join(output_dir, best_model_p_name_weights))
-                val_loss_u = fit_with_schedule(model, backbone_model, phase_layer_index['u'], False)
+                val_loss_u = fit_with_schedule(model, backbone_models, phase_layer_index['u'], False)
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
             elif args.mode == 'eval':
