@@ -19,6 +19,7 @@ import tqdm
 from scipy.interpolate import griddata
 from sklearn.metrics import log_loss
 
+import efficientnet.tfkeras
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
@@ -64,25 +65,16 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """
 
     img = x['input_1']
-    # TODO investigate these two
-    # img = tf.image.random_hue(img, 0.08)
-    # img = tf.image.random_saturation(img, 0.6, 1.6)
     
     img = tf.image.random_brightness(img, 0.1)
     img = tf.image.random_contrast(img, 0.8, 1.2)
     img = tf.image.random_flip_left_right(img)
 
     jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    img = tf.cond(jitter_choice < 0.75, lambda: img, lambda: image_augment.random_jitter(img))
+    img = tf.cond(jitter_choice < 0.75, lambda: img, lambda: augment_image.random_jitter(img))
 
     rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    img = tf.cond(rotate_choice < 0.75, lambda: x, lambda: random_rotate(x))
-    # img = tf.reshape(img, [constants.SEQ_LEN, constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    # TODO make it to work on 4D and 5D
-    # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    # x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-    #     x, min_jpeg_quality=40, max_jpeg_quality=90))
+    img = tf.cond(rotate_choice < 0.75, lambda: img, lambda: augment_image.random_rotate(img))
 
     return {'input_1':img, 'input_2':x['input_2']}, y
 
@@ -108,8 +100,9 @@ def tfrecords_dataset(input_dir, is_training):
 
     def _parse_function(example_proto):
         example = tf.io.parse_single_example(example_proto, feature_description)
-        # sample = (example['sample'] + 1.0) / 2
-        sample = example['sample']
+        # TF records were written float32 [0., 1.)]
+        sample = example['sample'] * 255.0
+        sample = efficientnet.tfkeras.preprocess_input(sample)
         if is_training:
             return {'input_1': sample, 'input_2': example['mask']}, example['label']
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
@@ -132,7 +125,9 @@ def fraction_positives(y_true, y_pred):
 def compile_model(model, mode, lr):
 
     # optimizer = tf.keras.optimizers.Adam(lr=lr) #(lr=0.025)
-    optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+    # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
+    optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
     #     learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -180,24 +175,41 @@ def weighted_ce_logits(y_true, y_pred):
     return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, 0.3, name='weighted_ce_logits')
 
 
-def load_efficientnet_model(input_shape, weights):
+def load_feature_extractor(input_shape, extractor_file_name):
 
-    # create the base pre-trained model
-    # efficientnet_weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-    efficientnet_weights = None
-    print('Loading efficientnet weights from: ', efficientnet_weights)
-    base_model = EfficientNetB2(weights=efficientnet_weights, # input_tensor=input_layer, 
-        input_shape=input_shape, 
-        include_top=False, pooling='avg')
+    custom_objs = {
+        'fraction_positives':fraction_positives,
+    }
 
-    net = base_model.output
+    # TODO rename 'flatten' to something specific
+    extractor_model = tf.keras.models.load_model(extractor_file_name,
+        custom_objects=custom_objs)
+    output = None
+    for i, layer in enumerate(extractor_model.layers):
+        # print(i, layer.name, layer.trainable)
+        if layer.name == 'flatten':
+            output = layer.output
+            print('output set to {}.'.format(layer.name))
+    if output is None:
+        raise ValueError('Could not get feature extractor output')
+
+    feature_extractor = Model(inputs=extractor_model.input, outputs=output)
+
+    return feature_extractor
+
+
+def load_efficientnetb2_model(input_shape, backbone_weights):
+
+    backbone_model = EfficientNetB2(weights=None, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+    net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
-    out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+    model.load_weights(backbone_weights)
 
-    model = Model(inputs=base_model.input, outputs=out)
-    model.load_weights(weights)
-
-    return base_model
+    return backbone_model
 
 
 def load_meso_model(input_shape, weights):
@@ -237,7 +249,7 @@ def load_resnet_model(input_shape, weights):
 # TODO: explore removal of projection at the end of MobileNet to LSTM
 # TODO: resolve from logits for all metrics, perhaps do your own weighted BCE
 # oh wait its already in TF doc
-def create_model(input_shape, model_name):
+def create_model(input_shape, model_name, backbone_weights):
 
     input_layer = Input(shape=input_shape)
     input_mask = Input(shape=(input_shape[0]))
@@ -246,7 +258,7 @@ def create_model(input_shape, model_name):
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_1.0_224_no_top.h5'
     # 'pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
     # weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-    weights = 'one_model_weights.h5'
+    weights = backbone_weights
 
     # feature_extractor = MobileNetV2(include_top=False,
     #     weights='pretrained/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.5_224_no_top.h5',
@@ -266,10 +278,12 @@ def create_model(input_shape, model_name):
     
     if model_name == 'meso':
         feature_extractor = load_meso_model(input_shape[-3:], weights)
-    elif model_name == 'efficientnet':
-        feature_extractor = load_efficientnet_model(input_shape[-3:], weights)
+    elif model_name == 'efficientnetb2':
+        feature_extractor = load_efficientnetb2_model(input_shape[-3:], weights)
     elif model_name == 'resnet':
         feature_extractor = load_resnet_model(input_shape[-3:], weights)
+    elif model_name == 'extractor':
+        feature_extractor = load_feature_extractor(input_shape[-3:], weights)
     else:
         raise ValueError('Unknown feature extractor.')
 
@@ -279,26 +293,6 @@ def create_model(input_shape, model_name):
         print(i, layer.name, layer.trainable)
     print(feature_extractor.summary())
 
-    # for layer in feature_extractor.layers:
-    #     if (('block_16' not in layer.name) # and ('block_15' not in layer.name)
-    #         # and ('block_14' not in layer.name) and ('block_13' not in layer.name)
-    #         # and ('block_12' not in layer.name) and ('block_11' not in layer.name)
-    #         # and ('block_10' not in layer.name) and ('block_9' not in layer.name)
-    #     ):
-    #         layer.trainable = False
-    #     else:
-    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
-    
-    # for layer in feature_extractor.layers:
-    #     if (('block_1_' in layer.name) or ('block_2_' in layer.name) 
-    #         or ('block_3_' in layer.name) or ('block_4_' in layer.name)
-    #         or ('block_5_' in layer.name) or ('block_6_' in layer.name)
-    #         or ('block_7_' in layer.name) or ('block_8_' in layer.name)
-    #     ):
-    #         layer.trainable = False
-    #         print('Layer {} trainable {}'.format(layer.name, layer.trainable))
-
-    # features = mobilenet.output
     # features = Conv2D(512, (1, 1), strides=(1, 1), padding='valid', activation='relu')(features)
     # features = Conv2D(256, (3, 3), strides=(2, 2), padding='valid', activation='relu')(features)
     # # # features = MaxPooling2D(pool_size=(2, 2))(features)
@@ -327,12 +321,12 @@ def create_model(input_shape, model_name):
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     # net = SeqWeightedAttention()(net, mask=input_mask)
-    net = TimeDistributed(Dropout(0.5))(net)
+    net = TimeDistributed(Dropout(0.25))(net)
     net = TimeDistributed(Dense(32, activation='elu'))(net)
     net = Bidirectional(GRU(32, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
@@ -368,8 +362,10 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='train')
     parser.add_argument('--train_dir', type=str)
     parser.add_argument('--eval_dir', type=str)
+    parser.add_argument('--output_dir', type=str, default='temp_toptrain')
     parser.add_argument('--model_name', type=str)
-    parser.add_argument('--weights', type=str, default=None)
+    parser.add_argument('--load', type=str, default=None)
+    parser.add_argument('--backbone_weights', type=str, default=None)
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--batch_size', type=int, default=64)
@@ -385,6 +381,15 @@ if __name__ == '__main__':
     }
 
     batch_size = args.batch_size
+    output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
+
+    # NOTE have to load extractor outside mirrored strategy
+    # see https://www.gitmemory.com/issue/tensorflow/tensorflow/30850/513363504
+    # extractor_model = None
+    # if args.backbone_weights is not None:
+    #     extractor_model = tf.keras.models.load_model(args.backbone_weights, custom_objects=custom_objs)
+    #     print(extractor_model.summary())
 
     if args.mode == 'train':
 
@@ -393,11 +398,11 @@ if __name__ == '__main__':
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
         with strategy.scope():
-            model = create_model(in_shape, args.model_name)
-            if args.weights is not None:
-                print('Loading model and weights from: ', args.weights)
+            model = create_model(in_shape, args.model_name, args.backbone_weights)
+            if args.load is not None:
+                print('Loading model and weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
-                model.load_weights(args.weights)
+                model.load_weights(args.load)
             else:
                 print('Training model from scratch.')
             compile_model(model, args.mode, args.lr)
@@ -409,10 +414,11 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='fattw_%s_{epoch}.h5' % args.model_name,
-                save_best_only=False,
+                filepath=os.path.join(output_dir, 'seq_%s_{epoch}.' % args.model_name),
+                save_best_only=True,
                 monitor='val_binary_crossentropy',
-                # save_format='tf',
+                mode='min',
+                save_format='tf',
                 save_weights_only=True,
                 verbose=1),
             tf.keras.callbacks.EarlyStopping(
@@ -420,9 +426,9 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=30,
+                patience=10,
                 verbose=1),
-            tf.keras.callbacks.CSVLogger('training_%s_log.csv' % args.model_name),
+            tf.keras.callbacks.CSVLogger(os.path.join(output_dir, 'training_seq_%s_log.csv' % args.model_name)),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
             # CosineAnnealingScheduler(T_max=num_epochs, eta_max=0.02, eta_min=1e-5),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
@@ -434,20 +440,20 @@ if __name__ == '__main__':
         history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
-        save_loss(history, 'final_%s_model' % args.model_name)
+        save_loss(history, os.path.join(output_dir, 'final_%s_model' % args.model_name))
 
     elif args.mode == 'eval':
         strategy = tf.distribute.MirroredStrategy()
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
         with strategy.scope():
-            model = create_model(in_shape, args.model_name)
-            if args.weights is not None:
-                print('Loading model and weights from: ', args.weights)
-                # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
-                model.load_weights(args.weights)
+            model = create_model(in_shape, args.model_name, args.backbone_weights)
+            if args.load is not None:
+                print('Loading model and weights from: ', args.load)
+                # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+                model.load_weights(args.load)
             else:
-                raise ValueError('Eval mode needs --weights argument.')
+                raise ValueError('Eval mode needs --load argument.')
             compile_model(model, args.mode, args.lr)
 
         eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
@@ -460,11 +466,11 @@ if __name__ == '__main__':
         print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
 
         with strategy.scope():
-            model = create_model(in_shape)
-            if args.weights is not None:
-                print('Loading model and weights from: ', args.weights)
-                # model = tf.keras.models.load_model(args.weights, custom_objects=custom_objs)
-                model.load_weights(args.weights)
+            model = create_model(in_shape, args.model_name, args.backbone_weights)
+            if args.load is not None:
+                print('Loading model and weights from: ', args.load)
+                # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
+                model.load_weights(args.load)
             else:
                 raise ValueError('Predict mode needs --weights argument.')
             compile_model(model, args.mode, args.lr)
@@ -502,13 +508,13 @@ if __name__ == '__main__':
             print('No predictions, check input.')
     
     if args.save == 'True':
-        model_file_name = args.mode + '_final_full_%s_model.h5' % args.model_name
-        if args.weights is not None:
-            prefix, _ = os.path.splitext(os.path.basename(args.weights))
+        model_file_name = args.mode + '_final_full_seq_%s_model.h5' % args.model_name
+        if args.load is not None:
+            prefix, _ = os.path.splitext(os.path.basename(args.load))
             model_file_name = prefix + '_' + model_file_name
-        model.save(model_file_name)
+        model.save(os.path.join(output_dir, model_file_name))
 
-        new_model = tf.keras.models.load_model(model_file_name, custom_objects=custom_objs)
+        new_model = tf.keras.models.load_model(os.path.join(output_dir, model_file_name), custom_objects=custom_objs)
         new_model.summary()
 
     t1 = time.time()
