@@ -79,7 +79,7 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     return {'input_1':img, 'input_2':x['input_2']}, y
 
 
-def tfrecords_dataset(input_dir, is_training):
+def tfrecords_dataset(input_dir, is_training, cache):
     print('Using tfrecords dataset from: ', input_dir)
     
     file_list = tf.data.Dataset.list_files(input_dir)
@@ -112,7 +112,8 @@ def tfrecords_dataset(input_dir, is_training):
     if is_training:
         dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(buffer_size=256)
-    else:
+    
+    if cache:
         dataset = dataset.cache()
 
     return dataset
@@ -126,7 +127,6 @@ def compile_model(model, mode, lr):
 
     # optimizer = tf.keras.optimizers.Adam(lr=lr) #(lr=0.025)
     # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
-    optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
 
     # learning_rate=CustomSchedule(D_MODEL)
     # optimizer = tf.keras.optimizers.Adam(
@@ -161,10 +161,12 @@ def compile_model(model, mode, lr):
             # label_smoothing=0.025
         )
         # my_loss = binary_focal_loss(alpha=0.7)
+        optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
     else:
         my_loss = tf.keras.losses.BinaryCrossentropy(
             # label_smoothing=0.025
         )
+        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -208,7 +210,9 @@ def load_efficientnetb1_model(input_shape, backbone_weights):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    model.load_weights(backbone_weights)
+    print('Loading backbone model weights from %s.' % backbone_weights)
+    if backbone_weights is not None:
+        model.load_weights(backbone_weights)
 
     return backbone_model
 
@@ -222,7 +226,9 @@ def load_efficientnetb2_model(input_shape, backbone_weights):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    model.load_weights(backbone_weights)
+    print('Loading backbone model weights from %s.' % backbone_weights)
+    if backbone_weights is not None:
+        model.load_weights(backbone_weights)
 
     return backbone_model
 
@@ -337,13 +343,13 @@ def create_model(input_shape, model_name, backbone_weights):
     # net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
-    net = TimeDistributed(Dropout(0.5))(net)
+    net = TimeDistributed(Dropout(0.25))(net)
     net = TimeDistributed(Dense(8, activation='elu'))(net)
     net = Bidirectional(GRU(8, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = SeqWeightedAttention()(net, mask=input_mask)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
@@ -424,9 +430,9 @@ if __name__ == '__main__':
                 print('Training model from scratch.')
             compile_model(model, args.mode, args.lr)
 
-        train_dataset = tfrecords_dataset(args.train_dir, is_training=True)
+        train_dataset = tfrecords_dataset(args.train_dir, is_training=True, cache=False)
         train_dataset = train_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
+        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False, cache=True)
         eval_dataset = eval_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
         callbacks = [
@@ -473,7 +479,7 @@ if __name__ == '__main__':
                 raise ValueError('Eval mode needs --load argument.')
             compile_model(model, args.mode, args.lr)
 
-        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
+        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False, cache=False)
         eval_dataset = eval_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
         model.evaluate(eval_dataset)
@@ -489,10 +495,10 @@ if __name__ == '__main__':
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
                 model.load_weights(args.load)
             else:
-                raise ValueError('Predict mode needs --weights argument.')
+                raise ValueError('Predict mode needs --load argument.')
             compile_model(model, args.mode, args.lr)
 
-        predict_dataset = tfrecords_dataset(args.eval_dir, is_training=False)
+        predict_dataset = tfrecords_dataset(args.eval_dir, is_training=False, cache=False)
         predict_dataset = predict_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
         # predict_dataset = predict_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE).take(1)
         
