@@ -198,6 +198,20 @@ def load_feature_extractor(input_shape, extractor_file_name):
     return feature_extractor
 
 
+def load_efficientnetb1_model(input_shape, backbone_weights):
+
+    backbone_model = EfficientNetB1(weights=None, input_shape=input_shape,
+                                    include_top=False, pooling='avg')
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.25)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+    model.load_weights(backbone_weights)
+
+    return backbone_model
+
+
 def load_efficientnetb2_model(input_shape, backbone_weights):
 
     backbone_model = EfficientNetB2(weights=None, input_shape=input_shape,
@@ -280,6 +294,8 @@ def create_model(input_shape, model_name, backbone_weights):
         feature_extractor = load_meso_model(input_shape[-3:], weights)
     elif model_name == 'efficientnetb2':
         feature_extractor = load_efficientnetb2_model(input_shape[-3:], weights)
+    elif model_name == 'efficientnetb1':
+        feature_extractor = load_efficientnetb1_model(input_shape[-3:], weights)
     elif model_name == 'resnet':
         feature_extractor = load_resnet_model(input_shape[-3:], weights)
     elif model_name == 'extractor':
