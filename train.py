@@ -158,7 +158,7 @@ def compile_model(model, mode, lr):
     if mode == 'train':
         METRICS.append(fraction_positives)
         my_loss = tf.keras.losses.BinaryCrossentropy(
-            label_smoothing=0.025
+            # label_smoothing=0.025
         )
         # my_loss = binary_focal_loss(alpha=0.7)
     else:
@@ -166,6 +166,7 @@ def compile_model(model, mode, lr):
             # label_smoothing=0.025
         )
 
+    print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
 
     return model
@@ -336,13 +337,13 @@ def create_model(input_shape, model_name, backbone_weights):
     # net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
-    net = TimeDistributed(Dropout(0.25))(net)
+    net = TimeDistributed(Dropout(0.5))(net)
     # net = TimeDistributed(Dense(32, activation='elu'))(net)
-    # net = Bidirectional(GRU(32, return_sequences=False))(net, mask=input_mask)
+    net = Bidirectional(GRU(16, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
-    net = SeqWeightedAttention()(net, mask=input_mask)
-    net = Dropout(0.25)(net)
+    # net = SeqWeightedAttention()(net, mask=input_mask)
+    # net = Dropout(0.5)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
