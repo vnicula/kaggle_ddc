@@ -320,12 +320,12 @@ def create_model(input_shape, model_name, backbone_weights):
     # net = Bidirectional(GRU(64, dropout=0.25, return_sequences=True))(net, mask=input_mask)
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
-    # net = SeqWeightedAttention()(net, mask=input_mask)
     net = TimeDistributed(Dropout(0.25))(net)
-    net = TimeDistributed(Dense(32, activation='elu'))(net)
-    net = Bidirectional(GRU(32, return_sequences=False))(net, mask=input_mask)
+    # net = TimeDistributed(Dense(32, activation='elu'))(net)
+    # net = Bidirectional(GRU(32, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
+    net = SeqWeightedAttention()(net, mask=input_mask)
     net = Dropout(0.25)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
@@ -414,7 +414,7 @@ if __name__ == '__main__':
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(output_dir, 'seq_%s_{epoch}.' % args.model_name),
+                filepath=os.path.join(output_dir, 'seq_%s_{epoch}.tf' % args.model_name),
                 save_best_only=True,
                 monitor='val_binary_crossentropy',
                 mode='min',
