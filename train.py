@@ -338,12 +338,12 @@ def create_model(input_shape, model_name, backbone_weights):
     # net = ScaledDotProductAttention()(net, mask=input_mask)
 
     net = TimeDistributed(Dropout(0.5))(net)
-    net = TimeDistributed(Dense(16, activation='elu'))(net)
-    net = Bidirectional(GRU(16, return_sequences=False))(net, mask=input_mask)
+    net = TimeDistributed(Dense(8, activation='elu'))(net)
+    net = Bidirectional(GRU(8, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = SeqWeightedAttention()(net, mask=input_mask)
-    # net = Dropout(0.5)(net)
+    net = Dropout(0.5)(net)
     out = Dense(1, activation='sigmoid', kernel_regularizer=tf.keras.regularizers.l2(0.02),
         # bias_initializer=tf.keras.initializers.Constant(np.log([1.5]))
     )(net)
