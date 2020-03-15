@@ -100,7 +100,7 @@ def tfrecords_dataset(input_dir, is_training):
 
     def _parse_function(example_proto):
         example = tf.io.parse_single_example(example_proto, feature_description)
-        # TF records were written float32 [0., 1.)]
+        # TF records were written float32 [0., 1.]
         sample = example['sample'] * 255.0
         sample = efficientnet.tfkeras.preprocess_input(sample)
         if is_training:
