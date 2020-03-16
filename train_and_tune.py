@@ -194,7 +194,7 @@ def compile_model(model, mode, lr):
     if mode == 'train':
         if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-        elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1':
+        elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1' or CMDLINE_ARGUMENTS.model_name == 'efficientnetb2':
             optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
         elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'onemil':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
@@ -306,7 +306,7 @@ def create_efficientnetb0_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.1)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
