@@ -324,7 +324,7 @@ def create_efficientnetb1_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
