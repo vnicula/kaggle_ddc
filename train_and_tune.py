@@ -194,16 +194,17 @@ def compile_model(model, mode, lr):
     if mode == 'train':
         if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-        elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1' or CMDLINE_ARGUMENTS.model_name == 'efficientnetb2':
-            # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
-            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+        # elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1' or CMDLINE_ARGUMENTS.model_name == 'efficientnetb2':
+        #     # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
+        #     optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
         elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'onemil':
-            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+            # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
         else:
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
     my_loss = tf.keras.losses.BinaryCrossentropy(
-        label_smoothing=0.025
+        # label_smoothing=0.025
     )
 
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
@@ -348,7 +349,7 @@ def create_efficientnetb2_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, [backbone_model], [332, 329, 301, 228, 170, 112, 0]
+    return model, [backbone_model], [332, 329, 301, 228, 112, 0]
 
 
 def create_efficientnetb3_model(input_shape, mode):
@@ -361,12 +362,13 @@ def create_efficientnetb3_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    # NOTE overfits with 0.25
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, [backbone_model], [377, 346, 258, 112, 0]
+    return model, [backbone_model], [377, 374, 346, 258, 112, 0]
 
 
 def create_efficientnetb4_model(input_shape, mode):
