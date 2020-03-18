@@ -175,11 +175,11 @@ custom_objs = {
 }
 
 
-def run(file_list):
+def run(file_list, model_file):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
-    model = load_model('one_model_eff.h5', custom_objects=custom_objs)
+    model = load_model(model_file, custom_objects=custom_objs)
 #     print(model.summary())
 #     score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
     len_file_list = len(file_list)
@@ -259,7 +259,7 @@ if __name__ == '__main__':
 #     except:
 #         pass
 
-    predictions = run(file_paths)
+    predictions = run(file_paths, sys.argv[2])
 #     print(predictions)
     save_predictions(predictions)
     t1 = time.time()
