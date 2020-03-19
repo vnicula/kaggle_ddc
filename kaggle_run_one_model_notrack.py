@@ -1,15 +1,12 @@
-# This Python 3 environment comes with many helpful analytics libraries installed
-# It is defined by the kaggle/python docker image: https://github.com/kaggle/docker-python
-
 import cv2
 import gc
 import glob
-import joblib
+# import joblib
 import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import pandas as pd
+# import pandas as pd
 import time
 import efficientnet.tfkeras
 import tensorflow as tf
@@ -17,7 +14,7 @@ import torch
 
 from facenet_pytorch import MTCNN
 from PIL import Image
-from sklearn.linear_model import LogisticRegression
+# from sklearn.linear_model import LogisticRegression
 from tensorflow.keras.models import load_model
 import tensorflow.keras as keras
 import tensorflow.keras.backend as K
@@ -25,6 +22,7 @@ import tensorflow.keras.backend as K
 print('TF version:', tf.__version__)
 print('Keras version:', tf.keras.__version__)
 print('Torch version:', torch.__version__)
+
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -38,6 +36,7 @@ if gpus:
     # Memory growth must be set before GPUs have been initialized
     print(e)
 
+
 META_DATA = "metadata.json"
 MARGIN = 28
 MAX_DETECTION_SIZE = 1280
@@ -48,7 +47,7 @@ TRAIN_FPS = 3
 MIN_FACE_CONFIDENCE = 0.9
 # FEAT_SHAPE = (TRAIN_FACE_SIZE, TRAIN_FACE_SIZE, 3)
 # SEQ_LEN = 30
-# MIN_TRACK_FACES = 5
+MIN_TRACK_FACES = 5
 MIN_FACE_SIZE = 32
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -179,7 +178,7 @@ def run(file_list, model_file):
 #                     prediction = score_calibrator.predict_proba(prediction.reshape(-1, 1))[:,1]
 #                     prediction = np.percentile(model_prediction, 60)
                 else:
-                    print('Model gave no prediction!')
+                    print('model gave no predictions for %s' % f_name)
 
 #                 fig = plt.figure(figsize=(20, 24))
 #                 for i, frame_face in enumerate(faces[0]):
@@ -189,13 +188,13 @@ def run(file_list, model_file):
 #                 plt.tight_layout()
 #                 plt.show()
 
-                del prediction_faces
+
             del faces
 
         except Exception as e:
             print(e)
 
-        print('file: {}, prediction: {}'.format(f_name, prediction))
+        print('file: %s, prediction: %1.6f' % (f_name, prediction))
         prediction_list.append([f_name, prediction])
         if i % 10 == 0:  
             gc.collect()
@@ -208,7 +207,7 @@ def save_predictions(predictions):
     with open('submission.csv', 'w') as sf:
         sf.write('filename,label\n')
         for name, score in predictions:
-#             score = np.clip(score, 0.49, 0.999) # expected 0.482
+#             score = np.clip(score, 0.01, 0.99)
             sf.write('%s,%1.6f\n' % (name, score))
 
 

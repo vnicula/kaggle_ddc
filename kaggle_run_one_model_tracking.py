@@ -45,7 +45,7 @@ TRAIN_FACE_SIZE = 256
 TRAIN_FRAME_COUNT = 31
 TRAIN_FPS = 3
 
-# MIN_FACE_CONFIDENCE = 0.9
+MIN_FACE_CONFIDENCE = 0.9
 # FEAT_SHAPE = (TRAIN_FACE_SIZE, TRAIN_FACE_SIZE, 3)
 # SEQ_LEN = 30
 MIN_TRACK_FACES = 5
@@ -179,6 +179,7 @@ def run(file_list, model_file):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
+    # model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
     model = load_model(model_file, custom_objects=custom_objs)
 #     print(model.summary())
 #     score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
