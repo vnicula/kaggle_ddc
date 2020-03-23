@@ -308,7 +308,7 @@ def create_efficientnetb0_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
@@ -492,7 +492,8 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
         compile_model(model, CMDLINE_ARGUMENTS.mode, lr)
         print('\nStep %d/%d with layer index %d, best val_loss %f, starting training with lr=%f\n' %
             (i+1, len(layer_index), li, val_loss, lr))
-        train_for_epochs = 3 if ((i == 0) and (CMDLINE_ARGUMENTS.model_name != 'onemil')) else CMDLINE_ARGUMENTS.epochs
+        # train_for_epochs = 3 if ((i == 0) and (CMDLINE_ARGUMENTS.model_name != 'onemil')) else CMDLINE_ARGUMENTS.epochs
+        train_for_epochs = CMDLINE_ARGUMENTS.epochs
         hfit = model.fit(train_dataset, epochs=train_for_epochs,  # class_weight=class_weight,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
