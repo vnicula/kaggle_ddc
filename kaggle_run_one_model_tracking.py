@@ -1,3 +1,4 @@
+import argparse
 import cv2
 import gc
 import glob
@@ -232,18 +233,26 @@ def run(file_list, model_file):
     return prediction_list
 
 
-def save_predictions(predictions):
-    with open('submission.csv', 'w') as sf:
+def save_predictions(predictions, filename):
+    with open(filename, 'w') as sf:
         sf.write('filename,label\n')
         for name, score in predictions:
-#             score = np.clip(score, 0.01, 0.99)
+            score = np.clip(score, 0.02, 0.99)
             sf.write('%s,%1.6f\n' % (name, score))
 
 
 if __name__ == '__main__':
-    import sys
+
     t0 = time.time()
-    test_path = os.path.join(sys.argv[1], 'test_videos/*.mp4')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test_dir', type=str)
+    parser.add_argument('--load', type=str, default=None)
+    parser.add_argument('--submission', type=str, default='submission.csv')
+
+    args = parser.parse_args()
+
+    test_path = os.path.join(args.test_dir, 'test_videos/*.mp4')
     print(test_path)
     file_paths = glob.glob(test_path)
     test_files = [os.path.basename(x) for x in file_paths]
@@ -260,9 +269,9 @@ if __name__ == '__main__':
 #     except:
 #         pass
 
-    predictions = run(file_paths, sys.argv[2])
+    predictions = run(file_paths, args.load)
 #     print(predictions)
-    save_predictions(predictions)
+    save_predictions(predictions, args.submission)
     t1 = time.time()
     print("Execution took: {}".format(t1-t0))
 

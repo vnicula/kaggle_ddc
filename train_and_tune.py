@@ -197,9 +197,9 @@ def compile_model(model, mode, lr):
         # elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1' or CMDLINE_ARGUMENTS.model_name == 'efficientnetb2':
         #     # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
         #     optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-        elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'onemil':
-            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-            # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+        # elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name or CMDLINE_ARGUMENTS.model_name == 'onemil':
+        #     optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+        #     # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
         else:
             optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
 
