@@ -46,7 +46,7 @@ TRAIN_FACE_SIZE = 256
 TRAIN_FRAME_COUNT = 31
 TRAIN_FPS = 3
 
-MIN_FACE_CONFIDENCE = 0.9
+MIN_FACE_CONFIDENCE = 0.85
 # FEAT_SHAPE = (TRAIN_FACE_SIZE, TRAIN_FACE_SIZE, 3)
 # SEQ_LEN = 30
 MIN_TRACK_FACES = 5
@@ -130,7 +130,7 @@ def detect_faces_bbox(detector, originals, images, batch_size, img_scale, face_s
 #                 detections.append(boxes)
 
 #     print(detections)
-    tracks = iou_tracker.track_iou(detections, 0.85, 0.95, 0.02, MIN_TRACK_FACES)
+    tracks = iou_tracker.track_iou(detections, MIN_FACE_CONFIDENCE, 0.95, 0.01, MIN_TRACK_FACES)
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
 #     print(tracks)
     for track in tracks[:2]:
