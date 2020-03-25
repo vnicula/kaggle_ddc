@@ -109,12 +109,11 @@ def tfrecords_dataset(input_dir, is_training, cache):
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     dataset = balance_dataset(dataset, is_training)
+    if cache:
+        dataset = dataset.cache()
     if is_training:
         dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(buffer_size=256)
-    
-    if cache:
-        dataset = dataset.cache()
 
     return dataset
 
@@ -155,18 +154,17 @@ def compile_model(model, mode, lr):
     ]
 
     # my_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True, label_smoothing=0.1)
+    my_loss = tf.keras.losses.BinaryCrossentropy(
+        # label_smoothing=0.025
+    )
+    optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
     if mode == 'train':
         METRICS.append(fraction_positives)
-        my_loss = tf.keras.losses.BinaryCrossentropy(
-            # label_smoothing=0.025
-        )
-        # my_loss = binary_focal_loss(alpha=0.7)
-        optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-    else:
-        my_loss = tf.keras.losses.BinaryCrossentropy(
-            # label_smoothing=0.025
-        )
-        optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+        # my_loss = tf.keras.losses.BinaryCrossentropy(
+        #     # label_smoothing=0.025
+        # )
+        # # my_loss = binary_focal_loss(alpha=0.7)
+        # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
 
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -222,9 +220,9 @@ def load_efficientnetb1_model(input_shape, backbone_weights):
     backbone_model = EfficientNetB1(weights=None, input_shape=input_shape,
                                     include_top=False, pooling='avg')
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     print('Loading backbone model weights from %s.' % backbone_weights)
     if backbone_weights is not None:
@@ -240,7 +238,7 @@ def load_efficientnetb2_model(input_shape, backbone_weights):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     print('Loading backbone model weights from %s.' % backbone_weights)
     if backbone_weights is not None:
@@ -363,7 +361,7 @@ def create_model(input_shape, model_name, backbone_weights):
 
     net = TimeDistributed(Dropout(0.5))(net)
     # net = TimeDistributed(Dense(2, activation='elu'))(net)
-    net = Bidirectional(GRU(1, return_sequences=False))(net, mask=input_mask)
+    net = Bidirectional(GRU(2, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = SeqWeightedAttention()(net, mask=input_mask)
