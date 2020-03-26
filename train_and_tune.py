@@ -194,6 +194,8 @@ def compile_model(model, mode, lr):
     if mode == 'train':
         if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+        elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb0x':
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)
         # elif CMDLINE_ARGUMENTS.model_name == 'efficientnetb1' or CMDLINE_ARGUMENTS.model_name == 'efficientnetb2':
         #     # optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
         #     optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
@@ -294,6 +296,27 @@ def create_xception_model(input_shape, mode):
     model = Model(inputs=backbone_model.input, outputs=net)
 
     return model, [backbone_model], [132, 126, 106, 76, 26, 0]
+
+
+def create_efficientnetb0x_model(input_shape, mode):
+
+    weights = None
+    if 'train' in CMDLINE_ARGUMENTS.mode and CMDLINE_ARGUMENTS.load is None:
+        weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
+    print('Loading efficientnet weights from: ', weights)
+    backbone_model = EfficientNetB0(weights=weights, input_shape=input_shape,
+                                    include_top=False, pooling='max')
+
+    net = Flatten()(backbone_model.output)
+    net = Dropout(0.5)(net)
+    net = Dense(16, activation='elu', name='feature_layer',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    net = Dropout(0.5)(net)
+    net = Dense(1, activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+    model = Model(inputs=backbone_model.input, outputs=net)
+
+    return model, [backbone_model], [230, 227, 214, 113, 0]
 
 
 def create_efficientnetb0_model(input_shape, mode):
@@ -400,6 +423,8 @@ def create_model(model_name, input_shape, mode):
         return create_xception_model(input_shape, mode)
     # if model_name == 'resnet':
     #     return create_resnet_model(input_shape, mode)
+    if model_name == 'efficientnetb0x':
+        return create_efficientnetb0x_model(input_shape, mode)
     if model_name == 'efficientnetb0':
         return create_efficientnetb0_model(input_shape, mode)
     if model_name == 'efficientnetb1':

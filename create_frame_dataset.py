@@ -96,10 +96,14 @@ def process_pair(detector, real_vid_path, fake_vid_path, track_cache, max_fakes)
 
 def process_single(detector, vid_path, label, max_faces):
     imgs, imrs, scale = process_utils.parse_vid(vid_path, constants.MAX_DETECTION_SIZE,
-        constants.TRAIN_FRAME_COUNT, constants.TRAIN_FPS, 3) #constants.SKIP_INITIAL_SEC)
+        constants.TRAIN_FRAME_COUNT, 
+        constants.TRAIN_FPS, 
+        0,  #constants.SKIP_INITIAL_SEC)
+    )
 
     faces, tracks = process_utils.detect_faces_bbox(detector, label, imgs, imrs, 256, 
             scale, 0, keep_tracks=1)
+    # faces = process_utils.detect_faces_no_tracks(detector, imgs, 256, 0)
     
     faces = [item for sublist in faces for item in sublist]
     faces_indexes = []
@@ -203,7 +207,8 @@ def run_label(detector, input_dir, max_faces, label, face_size, output_prefix):
 
     writing_dir = os.path.join(input_dir, output_prefix, label)
     os.makedirs(writing_dir, exist_ok=True)
-    file_list = glob.glob(input_dir + '/*.mp4')
+    # file_list = glob.glob(input_dir + '/*.mp4')
+    file_list = glob.glob(input_dir + '/*.avi')
 
     for file_path in tqdm.tqdm(file_list):
         file_name = os.path.basename(file_path)
