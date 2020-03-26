@@ -3,6 +3,7 @@ import augment_image
 import constants
 import feature_extractor_models as featx
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 import os
 import tensorflow as tf
@@ -100,6 +101,7 @@ def process_path(file_path):
     return img, label
 
 
+@tf.function
 def split_pair(img, label):
     img_shape = tf.shape(img)
     # assert img_shape[0] == img_shape[1] and img_shape[1] % 2 == 0
@@ -132,8 +134,9 @@ def prepare_dataset(ds, is_training, batch_size, cache):
             print('Caching dataset is_training: %s' % is_training)
             ds = ds.cache()
 
-    # TODO move this after batching - deal with batch jitter and jpeg qual
+    # TODO move this after batching - deal with batch jpeg qual
     if is_training:
+        ds = ds.repeat()
         # ds = ds.map(AUGMENTATION, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         ds = ds.map(augment_image.image_augment,
                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -162,11 +165,12 @@ def input_dataset(input_dir, is_training, batch_size, cache, pair):
 
     if pair:
         labeled_ds = labeled_ds.flat_map(split_pair)
-    else:
-        labeled_ds = balance_dataset(labeled_ds, is_training)
-    labeled_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
 
-    return labeled_ds
+    labeled_ds, ds_count = balance_dataset(labeled_ds, is_training)
+    labeled_ds = prepare_dataset(labeled_ds, is_training, batch_size, cache)
+    steps_per_epoch = math.ceil(float(ds_count) / batch_size)
+    
+    return labeled_ds, steps_per_epoch
 
 
 def fraction_positives(y_true, y_pred):
@@ -496,9 +500,9 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
     assert CMDLINE_ARGUMENTS.mode == 'train', "Trying to call fit with mode %s" % CMDLINE_ARGUMENTS.mode
     assert type(backbone_models) is list 
 
-    train_dataset = input_dataset(
+    train_dataset, train_steps_per_epoch = input_dataset(
         CMDLINE_ARGUMENTS.train_dir, is_training=True, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=False, pair=is_pair)
-    eval_dataset = input_dataset(
+    eval_dataset, _ = input_dataset(
         CMDLINE_ARGUMENTS.eval_dir, is_training=False, batch_size=CMDLINE_ARGUMENTS.batch_size, cache=True, pair=is_pair)
     if backbone_models is not None and len(backbone_models) > 0:
         print(backbone_models[0].summary())
@@ -506,7 +510,7 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
     best_weights = model.get_weights()
     best_weights_info = 'li: %d, epoch: %d' % (layer_index[0], 0)
     dataset_name = 'paired' if is_pair else 'unpaired'
-    print('Fit model on %s dataset with layer index %s' % (dataset_name, layer_index))
+    print('Fit model on %s dataset, steps per epoch %d, with layer index %s' % (dataset_name, train_steps_per_epoch, layer_index))
 
     for i, li in enumerate(layer_index):
         if backbone_models is not None:
@@ -519,6 +523,7 @@ def fit_with_schedule(model, backbone_models, layer_index, is_pair):
         # train_for_epochs = 3 if ((i == 0) and (CMDLINE_ARGUMENTS.model_name != 'onemil')) else CMDLINE_ARGUMENTS.epochs
         train_for_epochs = CMDLINE_ARGUMENTS.epochs
         hfit = model.fit(train_dataset, epochs=train_for_epochs,  # class_weight=class_weight,
+                         steps_per_epoch=train_steps_per_epoch,
                          validation_data=eval_dataset,  # validation_steps=validation_steps,
                          callbacks=callbacks_list(li, is_pair))
         phase_val_loss = min(hfit.history['val_loss'])
@@ -615,7 +620,7 @@ def main():
                 print('\nTraining done, val_loss paired: %f, val_loss unpaired: %f\n' % (val_loss_p, val_loss_u))
 
             elif args.mode == 'eval':
-                eval_dataset = input_dataset(
+                eval_dataset, _ = input_dataset(
                     args.eval_dir, is_training=False, batch_size=batch_size,
                     cache=False,
                     pair=False

@@ -906,8 +906,15 @@ def balance_dataset(dset, is_training):
     fractions, counts = class_fractions(dset)
     min_count = min(counts)
     max_count = max(counts)
+    ds_count = 0
+
+    if min_count == max_count:
+        print('No balance needed, fractions: {}, counts: {}, take {}.'.format(
+            fractions, counts, min_count))
+        return dset, min_count * 2
 
     if not is_training:
+        ds_count = min_count
         print('Fractions: {}, counts: {}, take {}.'.format(
             fractions, counts, min_count))
         negative_ds = dset.filter(
@@ -916,6 +923,7 @@ def balance_dataset(dset, is_training):
             lambda features, label: label == 1).take(min_count)
 
     else:
+        ds_count = max_count
         if counts[0] < counts[1]:
             repeat_times = counts[1] // counts[0]
             print('Fractions: {}, counts: {}, repeat {}/{} and take {}.'.format(
@@ -940,10 +948,14 @@ def balance_dataset(dset, is_training):
             positive_ds = dset.filter(
                 lambda features, label: label == 1).take(max_count)
 
-    balanced_ds = tf.data.experimental.sample_from_datasets(
-        [negative_ds, positive_ds], [0.5, 0.5]
-    )
-    return balanced_ds
+    choice_dataset = tf.data.Dataset.range(2).repeat(ds_count)
+    # balanced_ds = tf.data.experimental.sample_from_datasets(
+    #     [negative_ds, positive_ds], [0.5, 0.5]
+    # )
+    balanced_ds = tf.data.experimental.choose_from_datasets(
+        [negative_ds, positive_ds], choice_dataset)
+
+    return balanced_ds, ds_count * 2
 
 def sparse_to_binary(y_true, y_pred):
     y_pred_pos = y_pred
