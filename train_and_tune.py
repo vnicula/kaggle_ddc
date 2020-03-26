@@ -316,7 +316,7 @@ def create_efficientnetb0x_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, [backbone_model], [230, 227, 214, 113, 0]
+    return model, [backbone_model], [227, 214, 113, 0]
 
 
 def create_efficientnetb0_model(input_shape, mode):

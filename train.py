@@ -188,7 +188,7 @@ def load_feature_extractor(input_shape, extractor_file_name):
     output = None
     for i, layer in enumerate(extractor_model.layers):
         # print(i, layer.name, layer.trainable)
-        if layer.name == 'flatten':
+        if layer.name == 'feature_layer':
             output = layer.output
             print('output set to {}.'.format(layer.name))
     if output is None:
@@ -361,7 +361,7 @@ def create_model(input_shape, model_name, backbone_weights):
 
     net = TimeDistributed(Dropout(0.5))(net)
     # net = TimeDistributed(Dense(2, activation='elu'))(net)
-    net = Bidirectional(GRU(2, return_sequences=False))(net, mask=input_mask)
+    net = Bidirectional(GRU(8, return_sequences=False))(net, mask=input_mask)
     
     # net = Dense(256, activation='elu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(net)
     # net = SeqWeightedAttention()(net, mask=input_mask)
