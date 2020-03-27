@@ -311,7 +311,7 @@ def create_efficientnetb0x_model(input_shape, mode):
                                     include_top=False, pooling='max')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.25)(net)
     net = Dense(16, activation='elu', name='feature_layer',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     # net = Dropout(0.5)(net)
