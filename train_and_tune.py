@@ -305,10 +305,10 @@ def create_efficientnetb0x_model(input_shape, mode):
         weights = 'pretrained/efficientnet-b0_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
     print('Loading efficientnet weights from: ', weights)
     backbone_model = EfficientNetB0(weights=weights, input_shape=input_shape,
-                                    include_top=False, pooling='max')
+                                    include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.25)(net)
+    net = Dropout(0.5)(net)
     net = Dense(16, activation='elu', name='feature_layer',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     # net = Dropout(0.5)(net)
@@ -316,7 +316,7 @@ def create_efficientnetb0x_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
-    return model, [backbone_model], [227, 214, 113, 0]
+    return model, [backbone_model], [230, 227, 214, 113, 0]
 
 
 def create_efficientnetb0_model(input_shape, mode):
