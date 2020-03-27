@@ -108,14 +108,15 @@ def tfrecords_dataset(input_dir, is_training, cache):
         return {'input_1': sample, 'input_2': example['mask'], 'name': example['name']}, example['label']
 
     dataset = dataset.map(map_func=_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    dataset = balance_dataset(dataset, is_training)
+    dataset, ds_count = balance_dataset(dataset, is_training)
     if cache:
         dataset = dataset.cache()
     if is_training:
+        dataset = dataset.repeat()
         dataset = dataset.map(image_augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(buffer_size=256)
 
-    return dataset
+    return dataset, ds_count
 
 
 def fraction_positives(y_true, y_pred):
@@ -447,9 +448,9 @@ if __name__ == '__main__':
                 print('Training model from scratch.')
             compile_model(model, args.mode, args.lr)
 
-        train_dataset = tfrecords_dataset(args.train_dir, is_training=True, cache=False)
+        train_dataset, train_ds_count = tfrecords_dataset(args.train_dir, is_training=True, cache=False)
         train_dataset = train_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-        eval_dataset = tfrecords_dataset(args.eval_dir, is_training=False, cache=True)
+        eval_dataset, _ = tfrecords_dataset(args.eval_dir, is_training=False, cache=True)
         eval_dataset = eval_dataset.batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
         callbacks = [
@@ -466,7 +467,7 @@ if __name__ == '__main__':
                 # monitor='val_loss', # watch out for reg losses
                 monitor='val_binary_crossentropy',
                 min_delta=1e-4,
-                patience=10,
+                patience=5,
                 verbose=1),
             tf.keras.callbacks.CSVLogger(os.path.join(output_dir, 'training_seq_%s_log.csv' % args.model_name)),
             # tf.keras.callbacks.LearningRateScheduler(step_decay),
@@ -477,7 +478,9 @@ if __name__ == '__main__':
         
         # class_weight={0: 0.82, 1: 0.18}
         # class_weight=[0.99, 0.01]
+        train_steps_per_epoch = math.ceil(float(train_ds_count) / batch_size)
         history = model.fit(train_dataset, epochs=num_epochs, # class_weight=class_weight, 
+            steps_per_epoch=train_steps_per_epoch,
             validation_data=eval_dataset, #validation_steps=validation_steps, 
             callbacks=callbacks)
         save_loss(history, os.path.join(output_dir, 'final_%s_model' % args.model_name))
