@@ -191,21 +191,32 @@ def compile_model(model, mode, lr):
         tf.keras.metrics.AUC(name='auc'),
         tf.keras.metrics.BinaryCrossentropy(),
     ]
+
+    # Note: 'sgdm'
+    optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
+    my_loss = tf.keras.losses.BinaryCrossentropy()
+
     if mode == 'train':
         METRICS.append(fraction_positives)
-
-    optimizer = tf.keras.optimizers.SGD(lr, momentum=0.9)
-    if mode == 'train':
-        if CMDLINE_ARGUMENTS.model_name == 'facenet' or CMDLINE_ARGUMENTS.model_name == 'resnet' \
-            or CMDLINE_ARGUMENTS.model_name == 'onemil':
+        my_loss = tf.keras.losses.BinaryCrossentropy(
+            label_smoothing=0.025
+        )
+        if CMDLINE_ARGUMENTS.optimizer == 'sgd':
+            optimizer = tf.keras.optimizers.SGD(lr)
+        elif CMDLINE_ARGUMENTS.optimizer == 'rms4':
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)        
+        elif CMDLINE_ARGUMENTS.optimizer == 'rms5':
+            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9)        
+        elif CMDLINE_ARGUMENTS.optimizer == 'radam':
+            optimizer = tfa.optimizers.RectifiedAdam(lr)
+        elif CMDLINE_ARGUMENTS.optimizer == 'lasgd':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr))
+        elif CMDLINE_ARGUMENTS.optimizer == 'lasgdm':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
-        elif 'efficientnet' in CMDLINE_ARGUMENTS.model_name:
-            optimizer = tf.keras.optimizers.RMSprop(lr, decay=1e-4, momentum=0.9)
-            # optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
-
-    my_loss = tf.keras.losses.BinaryCrossentropy(
-        label_smoothing=0.025
-    )
+        elif CMDLINE_ARGUMENTS.optimizer == 'larms5':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
+        elif CMDLINE_ARGUMENTS.optimizer == 'laradam':
+            optimizer = tfa.optimizers.Lookahead(tfa.optimizers.RectifiedAdam(lr))
 
     print('Using loss: %s, optimizer: %s' % (my_loss, optimizer))
     model.compile(loss=my_loss, optimizer=optimizer, metrics=METRICS)
@@ -578,6 +589,7 @@ def main():
     parser.add_argument('--save', type=str, default='True')
     parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--optimizer', type=str, default='sgdm')
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--frozen', type=int, default=-1)
 
