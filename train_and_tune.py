@@ -352,8 +352,9 @@ def create_efficientnetb0_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    layer_index_dict = {'p':[230, 227, 214, 156, 113, 70, 42], 'u':[230, 227, 214, 156, 113]}
 
-    return model, [backbone_model], [230, 227, 214, 113, 0]
+    return model, [backbone_model], layer_index_dict
 
 
 def create_efficientnetb1x_model(input_shape, mode):
@@ -386,12 +387,13 @@ def create_efficientnetb1_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    layer_index_dict = {'p':[332, 329, 301, 228, 112, 69], 'u':[332, 329, 301, 228, 112]}
 
-    return model, [backbone_model], [332, 329, 301, 228, 112, 0]
+    return model, [backbone_model], layer_index_dict
 
 
 def create_efficientnetb2_model(input_shape, mode):
@@ -404,12 +406,13 @@ def create_efficientnetb2_model(input_shape, mode):
                                     include_top=False, pooling='avg')
 
     net = Flatten()(backbone_model.output)
-    net = Dropout(0.5)(net)
+    net = Dropout(0.25)(net)
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228, 170, 112]}
 
-    return model, [backbone_model], [332, 329, 301, 228, 112, 0]
+    return model, [backbone_model], layer_index_dict
 
 
 def create_efficientnetb3_model(input_shape, mode):
@@ -427,9 +430,9 @@ def create_efficientnetb3_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    layer_index_dict = {'p':[377, 374, 346, 258, 185, 112, 69], 'u':[377, 374, 346, 258, 185, 112]}
 
-    # return model, [backbone_model], [377, 374, 346, 258, 112, 0]
-    return model, [backbone_model], [377, 374, 346, 258, 112]
+    return model, [backbone_model], layer_index_dict
 
 
 def create_efficientnetb4_model(input_shape, mode):
@@ -631,9 +634,10 @@ def main():
 
         with strategy.scope():
             # due to bugs need to load weights for mirrored strategy - cannot load full model
-            model, backbone_models, layer_index = create_model(
+            model, backbone_models, phase_layer_index = create_model(
                 model_name, in_shape, args.mode)
-            phase_layer_index = {'p': layer_index, 'u': layer_index}
+            assert 'p' in phase_layer_index and 'u' in phase_layer_index
+            # phase_layer_index = {'p': layer_index, 'u': layer_index}
             if args.load is not None:
                 print('\nLoading weights from: ', args.load)
                 # model = tf.keras.models.load_model(args.load, custom_objects=custom_objs)
@@ -642,7 +646,9 @@ def main():
                     load_file_name, _ = os.path.splitext(os.path.basename(args.load))
                     phase = load_file_name.split('_')[-1]
                     load_li = int(load_file_name.split('_')[-3][2:])
-                    phase_layer_index[phase] = layer_index[layer_index.index(load_li):]
+                    assert load_li in phase_layer_index[phase], "Allowed starting li are: %s" % phase_layer_index[phase]
+                    phase_start_index = phase_layer_index[phase].index(load_li)
+                    phase_layer_index[phase] = phase_layer_index[phase][phase_start_index:]
                     print('Loaded phase: %s, layer index: %s' % (phase, load_li))
             else:
                 print('\nTraining model from scratch.')
