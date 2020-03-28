@@ -98,32 +98,11 @@ def class_func(feat, label):
     return label
 
 
-class TbAugmentation:
-    def __init__(self, logdir: str, max_images: int, name: str):
-        self.file_writer = tf.summary.create_file_writer(logdir)
-        self.max_images: int = max_images
-        self.name: str = name
-        self._counter: int = 0
-
-    def __call__(self, image, label):
-        augmented_image, _ = augment_image.image_augment(image, label)
-        with self.file_writer.as_default():
-            tf.summary.image(
-                self.name + str(label),
-                [augmented_image],
-                step=self._counter,
-                max_outputs=self.max_images,
-            )
-
-        self._counter += 1
-        return augmented_image, label
-
-
 def prepare_dataset(ds, is_training, batch_size, cache):
     # use `.cache(filename)` to cache preprocessing work for datasets that don't
     # fit in memory.
 
-    # AUGMENTATION = TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
+    # AUGMENTATION = augment_image.TbAugmentation(IMAGES_LOG_DIR, max_images=64, name="Images")
 
     ds = balance_dataset(ds, is_training)
 

@@ -6,6 +6,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import os
+import sys
 import tensorflow as tf
 import tf_explain
 import tensorflow_addons as tfa
@@ -32,6 +33,7 @@ from keras_utils import balance_dataset, sce_loss, gce_loss, print_trainable_sum
 tfkl = tf.keras.layers
 
 CMDLINE_ARGUMENTS = None
+IMAGES_LOG_DIR = "logs/images"
 
 np.random.seed(1234)
 tf.random.set_seed(1234)
@@ -63,6 +65,7 @@ def get_label(file_path):
 def preprocess_img(img, label):
     # Note: at this point image should be 3D-4D tf.float32 0.-255.
     if 'efficientnet' in CMDLINE_ARGUMENTS.model_name:
+        img = tf.cast(img, tf.float32)
         img = efficientnet.tfkeras.preprocess_input(img)
     elif CMDLINE_ARGUMENTS.model_name == 'xception':
         img = tf.keras.applications.xception.preprocess_input(img)
@@ -95,7 +98,8 @@ def process_path(file_path):
     # load the raw data from the file as a string
     img = tf.io.read_file(file_path)
     img = tf.image.decode_png(img, channels=3)
-    img = tf.cast(img, tf.float32)
+    # TODO check all preprocess functions if they can work with uint8
+    # img = tf.cast(img, tf.float32)
     # img = preprocess_img(img)
 
     return img, label
@@ -104,7 +108,8 @@ def process_path(file_path):
 @tf.function
 def split_pair(img, label):
     img_shape = tf.shape(img)
-    # assert img_shape[0] == img_shape[1] and img_shape[1] % 2 == 0
+    # assert img_shape[0] == 256 and img_shape[1] == 512
+    # tf.print(img_shape, output_stream=sys.stderr)
     w_offset = img_shape[1] // 2
 
     left_input = tf.image.crop_to_bounding_box(
@@ -126,6 +131,9 @@ def split_pair(img, label):
 
 
 def prepare_dataset(ds, is_training, batch_size, cache):
+
+    # log_image_dir = os.path.join(IMAGES_LOG_DIR, CMDLINE_ARGUMENTS.model_name)
+    # AUGMENTATION = augment_image.TbAugmentation(log_image_dir, max_images=128, name="Images")
 
     if cache:
         if isinstance(cache, str):

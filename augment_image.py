@@ -6,7 +6,7 @@ import tensorflow_addons as tfa
 
 def random_jitter(image):
 
-    image = tf.image.resize(image, [272, 272]) # method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    image = tf.image.resize(image, [272, 272], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     if image.shape.__len__() == 4:
         batch_size = tf.shape(image)[0]
         image = tf.image.random_crop(
@@ -55,16 +55,16 @@ def image_augment(x: tf.Tensor, y: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     x = tf.image.random_contrast(x, 0.8, 1.2)
     x = tf.image.random_flip_left_right(x)
 
-    jitter_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jitter_choice < 0.75, lambda: x, lambda: random_jitter(x))
+    jitter_jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jitter_jpeg_choice < 0.75, lambda: x, lambda: random_jitter(x))
+
+    # jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
+    x = tf.cond(jitter_jpeg_choice > 0.25, lambda: x, lambda: tf.image.random_jpeg_quality(
+        x, min_jpeg_quality=40, max_jpeg_quality=90))
 
     rotate_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
     x = tf.cond(rotate_choice < 0.75, lambda: x, lambda: random_rotate(x))
     # x = tf.reshape(x, [constants.MESO_INPUT_HEIGHT, constants.MESO_INPUT_WIDTH, 3])
-
-    jpeg_choice = tf.random.uniform(shape=[], minval=0., maxval=1., dtype=tf.float32)
-    x = tf.cond(jpeg_choice < 0.75, lambda: x, lambda: tf.image.random_jpeg_quality(
-        x, min_jpeg_quality=40, max_jpeg_quality=90))
 
     return (x, y)
 
@@ -114,6 +114,28 @@ def image_augment2(x: (tf.Tensor, tf.Tensor), y: tf.Tensor) -> ((tf.Tensor, tf.T
         x1, min_jpeg_quality=40, max_jpeg_quality=90))
 
     return ((x0, x1), y)
+
+
+class TbAugmentation:
+    def __init__(self, logdir: str, max_images: int, name: str):
+        self.file_writer = tf.summary.create_file_writer(logdir)
+        self.max_images: int = max_images
+        self.name: str = name
+        self._counter: int = 0
+
+    def __call__(self, image, label):
+        augmented_image, _ = image_augment(image, label)
+        with self.file_writer.as_default():
+            tf.summary.image(
+                self.name + str(label),
+                [augmented_image],
+                # [image / 255.0],
+                step=self._counter,
+                max_outputs=self.max_images,
+            )
+
+        self._counter += 1
+        return augmented_image, label
 
 
 def preprocess_symbolic_input_vggface(x, data_format=None, version=1):
