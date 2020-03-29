@@ -35,9 +35,22 @@ def process_actor(actor_dir, output_dir, min_face_size, face_resize):
     return count
 
 
+def process_actor_vggface(actor_dir, output_dir, min_face_size, face_resize):
+
+    count = 0
+    images = glob.glob(actor_dir + '/*.jpg')
+    for image in images:
+        count += check_shape_and_save(image, output_dir, min_face_size, face_resize)
+
+    return count
+
+
 def run(actor_dir):
 
-    cnt = process_actor(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
+    # VoxCeleb
+    # cnt = process_actor(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
+    # VggFace2
+    cnt = process_actor_vggface(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
     return cnt
 
 
