@@ -352,7 +352,8 @@ def create_efficientnetb0_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[230, 227, 214, 156, 113, 70, 42], 'u':[230, 227, 214, 156, 113]}
+    # layer_index_dict = {'p':[230, 227, 214, 156, 113, 70, 42], 'u':[230, 227, 214, 156, 113]}
+    layer_index_dict = {'p':[230, 227, 214, 156, 113, 70], 'u':[230, 227, 214, 156]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -373,8 +374,9 @@ def create_efficientnetb1x_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-
-    return model, [backbone_model], [329, 301, 228, 112, 0]
+    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301]}
+    
+    return model, [backbone_model], layer_index_dict
 
 
 def create_efficientnetb1_model(input_shape, mode):
@@ -391,7 +393,7 @@ def create_efficientnetb1_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301, 228]}
+    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -410,7 +412,9 @@ def create_efficientnetb2_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228, 170]}
+    # block4: 112
+    # layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228]}
+    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -430,7 +434,8 @@ def create_efficientnetb3_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[377, 374, 346, 258, 185, 112, 69], 'u':[377, 374, 346, 258, 185, 112]}
+    # layer_index_dict = {'p':[377, 374, 346, 258, 185, 112, 69], 'u':[377, 374, 346, 258, 185, 112]}
+    layer_index_dict = {'p':[377, 374, 346, 258, 185, 112], 'u':[377, 374, 346, 258]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -449,8 +454,8 @@ def create_efficientnetb4_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    # block3: 84, block4: 142, block5: 230
-    layer_index_dict = {'p':[467, 464, 436, 318, 230, 142], 'u':[467, 464, 436, 318]}
+    # block3: 84, block4: 142, block5: 230, block6: 318
+    layer_index_dict = {'p':[467, 464, 436, 318], 'u':[467, 464, 436]}
 
     return model, [backbone_model], layer_index_dict
 
