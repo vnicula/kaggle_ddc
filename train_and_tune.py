@@ -393,7 +393,7 @@ def create_efficientnetb1_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[332, 329, 301, 228, 170], 'u':[332, 329]}
+    layer_index_dict = {'p':[332, 329], 'u':[332]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -414,7 +414,7 @@ def create_efficientnetb2_model(input_shape, mode):
     model = Model(inputs=backbone_model.input, outputs=net)
     # block4: 112
     # layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228]}
-    layer_index_dict = {'p':[332, 329, 301, 228, 170], 'u':[332, 329]}
+    layer_index_dict = {'p':[332, 329, 301, 228], 'u':[332, 329]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -610,7 +610,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--optimizer', type=str, default='sgdm')
     parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--frozen', type=int, default=-1)
+    parser.add_argument('--read_li', type=str, default=True)
 
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
@@ -651,8 +651,12 @@ def main():
                 model.load_weights(args.load)
                 if args.mode == 'train':
                     load_file_name, _ = os.path.splitext(os.path.basename(args.load))
-                    phase = load_file_name.split('_')[-1]
-                    load_li = int(load_file_name.split('_')[-3][2:])
+                    if args.read_li == 'True':
+                        phase = load_file_name.split('_')[-1]
+                        load_li = int(load_file_name.split('_')[-3][2:])
+                    else:
+                        phase = 'p'
+                        load_li = phase_layer_index[phase][0]
                     assert load_li in phase_layer_index[phase], "Allowed starting li are: %s" % phase_layer_index[phase]
                     phase_start_index = phase_layer_index[phase].index(load_li)
                     phase_layer_index[phase] = phase_layer_index[phase][phase_start_index:]
