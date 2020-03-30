@@ -391,7 +391,7 @@ def create_efficientnetb1_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
-    layer_index_dict = {'p':[332, 329, 301, 228, 112, 69], 'u':[332, 329, 301, 228, 170]}
+    layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301, 228]}
 
     return model, [backbone_model], layer_index_dict
 
