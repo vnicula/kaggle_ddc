@@ -16,7 +16,8 @@ def check_shape_and_save(img_path, output_dir, min_face_size, face_resize):
         image0 = cv2.resize(image0, (face_resize, face_resize), interpolation = cv2.INTER_LINEAR)
         fname, _ = os.path.splitext(os.path.basename(img_path))
         hash_name = os.path.dirname(img_path).split('/')[-1]
-        image0_file = os.path.join(output_dir, hash_name + '_' + fname + '.png')
+        actor_name = os.path.dirname(img_path).split('/')[-3]
+        image0_file = os.path.join(output_dir, actor_name + '_' + hash_name + '_' + fname + '.png')
         cv2.imwrite(image0_file, image0)
         return 1
     return 0
@@ -48,9 +49,9 @@ def process_actor_vggface(actor_dir, output_dir, min_face_size, face_resize):
 def run(actor_dir):
 
     # VoxCeleb
-    # cnt = process_actor(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
+    cnt = process_actor(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
     # VggFace2
-    cnt = process_actor_vggface(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
+    # cnt = process_actor_vggface(actor_dir, CMDLINE_ARGUMENTS.output_dir, CMDLINE_ARGUMENTS.min_face_size, 256)
     return cnt
 
 
