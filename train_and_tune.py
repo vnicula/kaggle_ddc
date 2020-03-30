@@ -449,8 +449,10 @@ def create_efficientnetb4_model(input_shape, mode):
     net = Dense(1, activation='sigmoid',
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
+    # block3: 84, block4: 142, block5: 230
+    layer_index_dict = {'p':[467, 464, 436, 318, 230, 142], 'u':[467, 464, 436, 318]}
 
-    return model, [backbone_model], [467, 464, 436, 318, 142, 0]
+    return model, [backbone_model], layer_index_dict
 
 
 def create_model(model_name, input_shape, mode):
