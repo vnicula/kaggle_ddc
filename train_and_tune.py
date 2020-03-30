@@ -329,10 +329,10 @@ def create_efficientnetb0x_model(input_shape, mode):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(16, activation='elu', name='feature_layer',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     # net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
 
     return model, [backbone_model], [230, 227, 214, 113, 0]
@@ -350,10 +350,10 @@ def create_efficientnetb0_model(input_shape, mode):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     # layer_index_dict = {'p':[230, 227, 214, 156, 113, 70, 42], 'u':[230, 227, 214, 156, 113]}
-    layer_index_dict = {'p':[230, 227, 214, 156, 113, 70], 'u':[230, 227, 214, 156]}
+    layer_index_dict = {'p':[230, 227, 214, 156, 113], 'u':[230, 227, 214]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -370,9 +370,9 @@ def create_efficientnetb1x_model(input_shape, mode):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(16, activation='elu', name='feature_layer',
-                kernel_regularizer=tf.keras.regularizers.l2(0.02))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301]}
     
@@ -391,7 +391,7 @@ def create_efficientnetb1_model(input_shape, mode):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     layer_index_dict = {'p':[332, 329, 301, 228, 170, 112], 'u':[332, 329, 301]}
 
@@ -410,7 +410,7 @@ def create_efficientnetb2_model(input_shape, mode):
     net = Flatten()(backbone_model.output)
     net = Dropout(0.5)(net)
     net = Dense(1, activation='sigmoid',
-                kernel_regularizer=tf.keras.regularizers.l2(0.025))(net)
+                kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     # block4: 112
     # layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228]}
