@@ -221,6 +221,8 @@ def compile_model(model, mode, lr):
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr))
         elif CMDLINE_ARGUMENTS.optimizer == 'lasgdm':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9))
+        elif CMDLINE_ARGUMENTS.optimizer == 'lasgdmn':
+            optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.SGD(lr, momentum=0.9, nesterov=True))
         elif CMDLINE_ARGUMENTS.optimizer == 'larms5':
             optimizer = tfa.optimizers.Lookahead(tf.keras.optimizers.RMSprop(lr, decay=1e-5, momentum=0.9))
         elif CMDLINE_ARGUMENTS.optimizer == 'laradam':
@@ -353,7 +355,7 @@ def create_efficientnetb0_model(input_shape, mode):
                 kernel_regularizer=tf.keras.regularizers.l2(0.05))(net)
     model = Model(inputs=backbone_model.input, outputs=net)
     # layer_index_dict = {'p':[230, 227, 214, 156, 113, 70, 42], 'u':[230, 227, 214, 156, 113]}
-    layer_index_dict = {'p':[230, 227, 214, 156, 113], 'u':[230, 227]}
+    layer_index_dict = {'p':[230, 227, 214, 156, 113], 'u':[230, 227, 214]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -610,7 +612,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--optimizer', type=str, default='sgdm')
     parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--read_li', type=str, default=True)
+    parser.add_argument('--read_li', type=str, default='True')
 
     args = parser.parse_args()
     global CMDLINE_ARGUMENTS
