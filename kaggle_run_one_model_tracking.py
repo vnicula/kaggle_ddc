@@ -46,11 +46,11 @@ TRAIN_FACE_SIZE = 256
 TRAIN_FRAME_COUNT = 31
 TRAIN_FPS = 3
 
-MIN_FACE_CONFIDENCE = 0.85
-# FEAT_SHAPE = (TRAIN_FACE_SIZE, TRAIN_FACE_SIZE, 3)
-# SEQ_LEN = 30
-MIN_TRACK_FACES = 5
 MIN_FACE_SIZE = 32
+MIN_FACE_CONFIDENCE = 0.8
+MIN_TRACK_CONFIDENCE = 0.95
+MIN_TRACK_IOU = 0.01
+MIN_TRACK_FACES = 5
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
@@ -116,21 +116,19 @@ def detect_faces_bbox(detector, originals, images, batch_size, img_scale, face_s
 #             print(frames_boxes, frames_confidences)
             for i in range(len(frames_boxes)):
                 # NOTE check if allowing a longer 'broken' track is better
-                if frames_boxes[i] is not None:
+                if (frames_boxes[i] is not None) and (len(frames_boxes[i]) > 0):
+#                     print(frames_boxes[i])
                     boxes = []
                     for box, confidence in zip(frames_boxes[i], frames_confidences[i]):
-                        boxes.append({'bbox': box, 'score':confidence})
-                    detections.append(boxes)
-                    detections_frame_num.append(lb*batch_size+i)
+                        if confidence > MIN_FACE_CONFIDENCE:
+                            boxes.append({'bbox': box, 'score':confidence})
+                    if len(boxes) > 0:
+                        detections.append(boxes)
+                        detections_frame_num.append(lb*batch_size+i)
 
-#                 boxes = []
-#                 if frames_boxes[i] is not None:
-#                     for box, confidence in zip(frames_boxes[i], frames_confidences[i]):
-#                         boxes.append({'bbox': box, 'score': confidence})
-#                 detections.append(boxes)
-
-#     print(detections)
-    tracks = iou_tracker.track_iou(detections, MIN_FACE_CONFIDENCE, 0.95, 0.01, MIN_TRACK_FACES)
+    # print(detections)
+#     tracks = track_iou(detections, MIN_FACE_CONFIDENCE, 0.95, 0.01, MIN_TRACK_FACES)
+    tracks = iou_tracker.track_iou(detections, MIN_TRACK_CONFIDENCE, MIN_TRACK_IOU, MIN_TRACK_FACES)
     tracks.sort(key = lambda x:x['max_score'], reverse=True)
 #     print(tracks)
     for track in tracks[:2]:
@@ -167,21 +165,12 @@ def extract_one_sample_bbox(video_path, max_detection_size, max_frame_count, fac
     return faces
 
 
-def fraction_positives(y_true, y_pred):
-    return tf.keras.backend.mean(y_true)
-
-
-custom_objs = {
-    'fraction_positives':fraction_positives,
-}
-
-
 def run(file_list, model_file):
 
     prediction_list = []
     # Note: Kaggle renames the model folder behind my back
     # model = load_model('/kaggle/input/featureextractormodel/one_model.h5', custom_objects=custom_objs)
-    model = load_model(model_file, custom_objects=custom_objs)
+    model = load_model(model_file)
 #     print(model.summary())
 #     score_calibrator = joblib.load('/kaggle/input/featureextractormodel/score_calibration.pkl')
     len_file_list = len(file_list)
@@ -237,7 +226,7 @@ def save_predictions(predictions, filename):
     with open(filename, 'w') as sf:
         sf.write('filename,label\n')
         for name, score in predictions:
-            score = np.clip(score, 0.02, 0.99)
+            # score = np.clip(score, 0.02, 0.99)
             sf.write('%s,%1.6f\n' % (name, score))
 
 

@@ -414,7 +414,7 @@ def create_efficientnetb2_model(input_shape, mode):
     model = Model(inputs=backbone_model.input, outputs=net)
     # block4: 112
     # layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228]}
-    layer_index_dict = {'p':[332, 329, 301, 228], 'u':[332, 329]}
+    layer_index_dict = {'p':[332], 'u':[332]}
 
     return model, [backbone_model], layer_index_dict
 
@@ -527,7 +527,7 @@ def callbacks_list(layer_index, is_pair):
             verbose=1),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',  # watch out for reg losses
-            min_delta=5e-4,
+            min_delta=1e-3,
             patience=2,
             mode='min',
             restore_best_weights=True,

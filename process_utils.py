@@ -90,14 +90,18 @@ def detect_faces_bbox(detector, label, originals, images, batch_size, img_scale,
         if (frames_boxes is not None) and (len(frames_boxes) > 0):
             # print(frames_boxes, frames_confidences)
             for i in range(len(frames_boxes)):
-                boxes = []
-                if frames_boxes[i] is not None:
+                if (frames_boxes[i] is not None) and (len(frames_boxes[i]) > 0):
+#                     print(frames_boxes[i])
+                    boxes = []
                     for box, confidence in zip(frames_boxes[i], frames_confidences[i]):
-                        boxes.append({'bbox': box, 'score': confidence})
-                detections.append(boxes)
+                        if confidence > MIN_FACE_CONFIDENCE:
+                            boxes.append({'bbox': box, 'score':confidence})
+                    if len(boxes) > 0:
+                        detections.append(boxes)
+                        # detections_frame_num.append(lb*batch_size+i)
 
     tracks = iou_tracker.track_iou(
-        detections, 0.85, 0.95, 0.01, constants.MIN_TRACK_FACES)
+        detections, constants.MIN_TRACK_CONFIDENCE, constants.MIN_TRACK_IOU, constants.MIN_TRACK_FACES)
 
     # TODO remove this
     # Can't use anything since it's multitrack fake
