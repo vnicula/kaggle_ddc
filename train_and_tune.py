@@ -414,7 +414,7 @@ def create_efficientnetb2_model(input_shape, mode):
     model = Model(inputs=backbone_model.input, outputs=net)
     # block4: 112
     # layer_index_dict = {'p':[332, 329, 301, 228, 170, 112, 69], 'u':[332, 329, 301, 228]}
-    layer_index_dict = {'p':[332], 'u':[332]}
+    layer_index_dict = {'p':[332, 329, 301, 228, 170], 'u':[332, 329, 301]}
 
     return model, [backbone_model], layer_index_dict
 
