@@ -3,10 +3,30 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 
-from sklearn.metrics import log_loss
+from sklearn.metrics import log_loss, roc_curve, auc, roc_auc_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
+
+
+def save_roc_curve(test, pred, prefix):
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    for i in range(2):
+        fpr[i], tpr[i], _ = roc_curve(test, pred)
+        roc_auc[i] = auc(fpr[i], tpr[i])
+
+    print('ROC AUC score: %f.' % roc_auc_score(test, pred))
+    plt.figure()
+    plt.plot(fpr[1], tpr[1])
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic')
+    plt.savefig(prefix + '_roc.png')
 
 def read_metadata(json_file):
     meta_df = pd.read_json(json_file)
@@ -41,6 +61,7 @@ if __name__ == '__main__':
     parser.add_argument('--save', type=str, default=None)
     args = parser.parse_args()
 
+    prefix, _ = os.path.splitext(args.submission)
     meta_df = read_metadata(args.meta).transpose()
     submission_df = read_submission(args.submission)
     submission_df.rename(columns={'label':'score'}, inplace=True)
@@ -67,8 +88,8 @@ if __name__ == '__main__':
     all_half = np.full_like(X, 0.5)
     print('Log loss on all 0.5 submission: {}'.format(log_loss(y, all_half)))
 
-    skf = StratifiedKFold(n_splits=4, random_state=None, shuffle=False)
-    lr = LogisticRegression(solver='lbfgs', max_iter=200)
+    skf = StratifiedKFold(n_splits=3, random_state=None, shuffle=False)
+    lr = LogisticRegression(solver='lbfgs', max_iter=50)
     cv_log_loss_logistic = []
     fold = 1
     for train_index, test_index in skf.split(X, y):
@@ -101,7 +122,7 @@ if __name__ == '__main__':
     lr.fit(X, y)
     
     if args.save is not None:
-        filename = 'score_calibration.pkl'
+        filename = prefix + '_score_calibration.pkl'
         joblib.dump(lr, filename)    
         lr = joblib.load(filename)
 
@@ -115,10 +136,12 @@ if __name__ == '__main__':
     merged_df[merged_df['label']=='REAL']['score'].hist(bins=100, label='REAL', alpha=0.5)
     merged_df[merged_df['label']=='FAKE']['score'].hist(bins=100, label='FAKE', alpha=0.5)
     plt.legend()
-    plt.savefig('score_distribution.png')
+    plt.savefig(prefix + '_score_distribution.png')
     plt.clf()
 
     merged_df[merged_df['label']=='REAL']['calibrated_score'].hist(bins=100, label='REAL', alpha=0.5)
     merged_df[merged_df['label']=='FAKE']['calibrated_score'].hist(bins=100, label='FAKE', alpha=0.5)
     plt.legend()
-    plt.savefig('score_distribution_calibrated.png')
+    plt.savefig(prefix + '_score_distribution_calibrated.png')
+
+    save_roc_curve(y, X, prefix)
