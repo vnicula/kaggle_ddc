@@ -1,0 +1,2 @@
+EffnetB2 max batch size for 4 GPU with 32Gb is 384
+Facenet --//-- is > 384
